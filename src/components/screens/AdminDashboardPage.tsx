@@ -1,0 +1,959 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { 
+  Lock, ShieldAlert, CheckCircle, Package, Users, Truck, Plus, Trash2, 
+  RotateCcw, DollarSign, Star, FileText, Image, RefreshCw, X, Eye
+} from 'lucide-react';
+import { Product, Order, SavedAddress } from '../../types';
+
+interface AdminDashboardPageProps {
+  products: Product[];
+  setProducts: (updatedList: Product[]) => void;
+  setScreen: (screen: any) => void;
+}
+
+export default function AdminDashboardPage({
+  products,
+  setProducts,
+  setScreen
+}: AdminDashboardPageProps) {
+  // Passcode verification gate
+  const [passcode, setPasscode] = useState('');
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return sessionStorage.getItem('admin_authenticated') === 'true';
+  });
+  const [errorMsg, setErrorMsg] = useState('');
+
+  // Tab Manager: 'orders' | 'inventory'
+  const [activeTab, setActiveTab] = useState<'orders' | 'inventory'>('orders');
+
+  // Orders list state
+  const [orders, setOrders] = useState<Order[]>([]);
+
+  // Selected Order for Modal Detail view
+  const [selectedOrderDetail, setSelectedOrderDetail] = useState<Order | null>(null);
+
+  // New product form states
+  const [newProdName, setNewProdName] = useState('');
+  const [newProdPrice, setNewProdPrice] = useState(999);
+  const [newProdOriginalPrice, setNewProdOriginalPrice] = useState(1499);
+  const [newProdCategory, setNewProdCategory] = useState('Graphic Tees');
+  const [newProdRating, setNewProdRating] = useState(4.8);
+  const [newProdTag, setNewProdTag] = useState<'Best Seller' | 'New Arrival' | 'Limited Edition' | '20% OFF' | 'Nuclear Proof'>('New Arrival');
+  const [newProdDescription, setNewProdDescription] = useState('');
+  const [newProdSizes, setNewProdSizes] = useState<string[]>(['M', 'L', 'XL']);
+  const [newProdColors, setNewProdColors] = useState<{name: string, value: string}[]>([
+    { name: 'Onyx Black', value: '#121212' },
+    { name: 'Sliver White', value: '#FFFFFF' }
+  ]);
+  const [newProdImageUrl, setNewProdImageUrl] = useState('https://i.ibb.co/6cHKvQCg/image.png');
+  const [newProdSpecs, setNewProdSpecs] = useState<string[]>([
+    '240 GSM organic pre-shrunk combed cotton',
+    'High density durable print details',
+    'Resilient neck collar construction'
+  ]);
+  const [newProdMaterial, setNewProdMaterial] = useState('100% Organic Combed Cotton');
+  const [newProdFit, setNewProdFit] = useState('Oversized streetwear relaxed drop');
+  const [newProdCare, setNewProdCare] = useState('Machine wash cold, air dry reverse side');
+
+  const [formSuccess, setFormSuccess] = useState(false);
+
+  // Load and Aggregate all placement orders from device local storages
+  const loadAllOrders = () => {
+    const aggregatedOrders: Order[] = [];
+    const keysToFind: { [key: string]: string } = {};
+
+    // Scan all localStorage items for order registries
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('cockroach_orders_')) {
+        try {
+          const userOrders = JSON.parse(localStorage.getItem(key) || '[]');
+          if (Array.isArray(userOrders)) {
+            userOrders.forEach((o: Order) => {
+              // Add key reference to locate this order's user owner later for status syncs
+              const ownerEmail = key.replace('cockroach_orders_', '').trim();
+              keysToFind[o.id] = ownerEmail;
+              aggregatedOrders.push(o);
+            });
+          }
+        } catch (e) {
+          console.error('Error parsing orders for key:', key, e);
+        }
+      }
+    }
+
+    // Sort by order date descending (newest first)
+    const sorted = aggregatedOrders.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return dateB - dateA;
+    });
+
+    setOrders(sorted);
+    return { sorted, keysToFind };
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadAllOrders();
+
+      const handleGlobalSync = () => {
+        loadAllOrders();
+      };
+
+      window.addEventListener('storage', handleGlobalSync);
+      window.addEventListener('cockroach_db_sync', handleGlobalSync);
+
+      return () => {
+        window.removeEventListener('storage', handleGlobalSync);
+        window.removeEventListener('cockroach_db_sync', handleGlobalSync);
+      };
+    }
+  }, [isAuthenticated]);
+
+  const handleVerifyPasscode = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (passcode === 'ANMOL45090') {
+      setIsAuthenticated(true);
+      sessionStorage.setItem('admin_authenticated', 'true');
+      setErrorMsg('');
+    } else {
+      setErrorMsg('Access Denied. Passcode parameters do not match terminal clearance.');
+    }
+  };
+
+  // Change order status live and save back to user-specific localStorage key
+  const handleUpdateOrderStatus = (orderId: string, nextStatus: 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled') => {
+    // 1. Locate the owner user storage key
+    let ownerEmailKey = '';
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith('cockroach_orders_')) {
+        try {
+          const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+          if (Array.isArray(parsed) && parsed.some((o: Order) => o.id === orderId)) {
+            ownerEmailKey = key;
+            break;
+          }
+        } catch (e) {}
+      }
+    }
+
+    if (ownerEmailKey) {
+      try {
+        const userOrders: Order[] = JSON.parse(localStorage.getItem(ownerEmailKey) || '[]');
+        const updated = userOrders.map((o: Order) => {
+          if (o.id === orderId) {
+            return { ...o, status: nextStatus };
+          }
+          return o;
+        });
+        localStorage.setItem(ownerEmailKey, JSON.stringify(updated));
+        
+        // Dispatch event for same-tab reactive update across components/pages
+        window.dispatchEvent(new Event('cockroach_db_sync'));
+
+        // Refresh local admin list instantly
+        loadAllOrders();
+        
+        // Sync detail modal if active
+        if (selectedOrderDetail && selectedOrderDetail.id === orderId) {
+          setSelectedOrderDetail({ ...selectedOrderDetail, status: nextStatus });
+        }
+      } catch (err) {
+        console.error('Failed to update live user order status', err);
+      }
+    }
+  };
+
+  // Delete product live from the catalogue
+  const handleDeleteProduct = (prodId: string) => {
+    const confirmation = window.confirm(`Confirm terminal removal of product ID: ${prodId}?`);
+    if (confirmation) {
+      const filtered = products.filter(p => p.id !== prodId);
+      setProducts(filtered);
+      localStorage.setItem('cockroach_products', JSON.stringify(filtered));
+      // Dispatch event for same-tab reactive update across components/pages
+      window.dispatchEvent(new Event('cockroach_db_sync'));
+    }
+  };
+
+  // Publish a brand new product live!
+  const handleAddProduct = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newProdName.trim() || !newProdDescription.trim()) {
+      alert('Specify a product title and description parameters.');
+      return;
+    }
+
+    const nextId = `prod-live-${Date.now()}`;
+    const freshProduct: Product = {
+      id: nextId,
+      name: newProdName,
+      price: Number(newProdPrice),
+      originalPrice: Number(newProdOriginalPrice),
+      rating: Number(newProdRating),
+      reviewCount: Math.floor(Math.random() * 15) + 5,
+      category: newProdCategory,
+      sizes: newProdSizes,
+      colors: newProdColors,
+      images: [newProdImageUrl, 'https://i.ibb.co/6cHKvQCg/image.png'],
+      tag: newProdTag,
+      description: newProdDescription,
+      specs: newProdSpecs.filter(line => line.trim().length > 0),
+      material: newProdMaterial,
+      fit: newProdFit,
+      care: newProdCare
+    };
+
+    const updatedList = [freshProduct, ...products];
+    setProducts(updatedList);
+    localStorage.setItem('cockroach_products', JSON.stringify(updatedList));
+    // Dispatch event for same-tab reactive update across components/pages
+    window.dispatchEvent(new Event('cockroach_db_sync'));
+
+    // Clear form fields
+    setNewProdName('');
+    setNewProdDescription('');
+    setFormSuccess(true);
+    setTimeout(() => setFormSuccess(false), 3000);
+  };
+
+  // Helper toggle item sizes
+  const toggleSizeCheckbox = (sz: string) => {
+    if (newProdSizes.includes(sz)) {
+      setNewProdSizes(newProdSizes.filter(s => s !== sz));
+    } else {
+      setNewProdSizes([...newProdSizes, sz]);
+    }
+  };
+
+  // Dynamic spec actions helper
+  const updateSpecLine = (index: number, value: string) => {
+    const next = [...newProdSpecs];
+    next[index] = value;
+    setNewProdSpecs(next);
+  };
+
+  const addSpecLine = () => {
+    setNewProdSpecs([...newProdSpecs, '']);
+  };
+
+  // Total calculated statistics from all live order entries
+  const totalRevenue = orders.reduce((sum, o) => o.status !== 'Cancelled' ? sum + o.totalAmount : sum, 0);
+  const activeOrdersCount = orders.filter(o => o.status !== 'Delivered' && o.status !== 'Cancelled').length;
+
+  return (
+    <div className="min-h-screen bg-[#0D0D0D] text-white pt-10 pb-20 px-4 sm:px-6 lg:px-8">
+      
+      {!isAuthenticated ? (
+        /* passcode gate layout */
+        <div className="max-w-md mx-auto mt-20 mb-32 bg-[#121316] border border-amber-500/10 rounded-2xl p-8 text-center space-y-6 shadow-2xl">
+          <div className="h-16 w-16 mx-auto rounded-full bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-500 text-3xl">
+            🔒
+          </div>
+          <div>
+            <h1 className="text-xl font-mono uppercase font-black tracking-wider text-amber-400">
+              Admin Terminal Clearances
+            </h1>
+            <p className="text-xs text-zinc-400 font-mono mt-1 leading-relaxed">
+              Establishing a sandboxed link requires encrypted key authorization credentials.
+            </p>
+          </div>
+
+          <form onSubmit={handleVerifyPasscode} className="space-y-4 pt-2">
+            <div>
+              <label className="block text-[10px] font-mono uppercase text-zinc-500 text-left font-bold mb-1.5 tracking-wider">
+                Enter Root Passcode:
+              </label>
+              <input
+                type="password"
+                placeholder="••••••••••••••"
+                value={passcode}
+                onChange={(e) => setPasscode(e.target.value)}
+                className="w-full bg-[#1A1B1E] border border-neutral-800 rounded-xl px-4 py-3 text-sm text-center text-amber-400 placeholder-neutral-700 outline-none focus:border-amber-500/60 transition-all font-mono"
+                autoFocus
+              />
+            </div>
+
+            {errorMsg && (
+              <p className="text-rose-500 text-[11px] font-mono text-center rounded bg-rose-950/20 border border-rose-950/50 p-2.5">
+                ⚠ {errorMsg}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              className="w-full bg-amber-500 hover:bg-amber-600 active:scale-[0.98] transition-all text-black font-mono uppercase tracking-widest text-xs font-black py-3 rounded-xl cursor-pointer shadow-[0_4px_15px_rgba(245,158,11,0.2)]"
+            >
+              Verify Credentials
+            </button>
+          </form>
+
+          <button
+            onClick={() => setScreen('home')}
+            className="text-[10px] uppercase font-mono tracking-widest text-zinc-500 hover:text-white cursor-pointer transition-colors pt-2 block mx-auto underline"
+          >
+            ← Exit Back to Home Base
+          </button>
+        </div>
+      ) : (
+        /* Full Authorized Workspace Panel */
+        <div className="max-w-7xl mx-auto space-y-8">
+          
+          {/* Dashboard Header Branding */}
+          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-neutral-900 pb-6">
+            <div className="space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs bg-amber-500/10 border border-amber-500/30 text-amber-500 font-mono font-black px-2.5 py-1 rounded">
+                  SYSADMIN OPERATIONAL TUNNEL
+                </span>
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-ping" />
+              </div>
+              <h1 className="text-2xl sm:text-3xl font-mono uppercase font-black tracking-tighter text-white">
+                CockroachKart Live Hub
+              </h1>
+              <p className="text-xs text-zinc-500 font-mono">
+                System parameters: Live state synchronization active. Direct local index reads running.
+              </p>
+            </div>
+
+            {/* Quick Actions */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => { loadAllOrders(); alert('Dispatched order databases scanned successfully.'); }}
+                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 h-10 px-4 rounded-xl text-xs font-mono flex items-center gap-2 cursor-pointer transition-colors"
+                title="Refresh index list"
+              >
+                <RefreshCw className="h-3.5 w-3.5 text-amber-500" />
+                <span>Sync Indexes</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  sessionStorage.removeItem('admin_authenticated');
+                  setIsAuthenticated(false);
+                }}
+                className="bg-rose-950/20 hover:bg-rose-950/40 border border-rose-900/30 h-10 px-4 rounded-xl text-xs font-mono text-rose-400 flex items-center gap-2 cursor-pointer transition-colors"
+              >
+                <span>Log Out</span>
+              </button>
+              
+              <button
+                onClick={() => { setScreen('home'); }}
+                className="bg-amber-500 hover:bg-amber-600 text-black h-10 px-4 rounded-xl text-xs font-mono font-bold flex items-center gap-1.5 cursor-pointer transition-colors"
+              >
+                <span>Store View</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Core Analytics Quick Widgets */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="bg-[#121316] border border-neutral-850 p-5 rounded-xl space-y-1">
+              <span className="block text-[10px] font-mono text-zinc-400 uppercase tracking-widest font-bold">Total Gross Sales Revenue</span>
+              <span className="block text-xl sm:text-2xl font-black font-mono text-emerald-400">
+                ₹{totalRevenue.toLocaleString('en-IN')}
+              </span>
+              <span className="block text-[9px] text-zinc-500 font-mono">excluding cancelled operations</span>
+            </div>
+
+            <div className="bg-[#121316] border border-neutral-850 p-5 rounded-xl space-y-1">
+              <span className="block text-[10px] font-mono text-zinc-400 uppercase tracking-widest font-bold">Total Registered Orders</span>
+              <span className="block text-xl sm:text-2xl font-black font-mono text-white">
+                {orders.length} orders
+              </span>
+              <span className="block text-[9px] text-zinc-500 font-mono">placed across database instances</span>
+            </div>
+
+            <div className="bg-[#121316] border border-neutral-850 p-5 rounded-xl space-y-1">
+              <span className="block text-[10px] font-mono text-zinc-400 uppercase tracking-widest font-bold">Pending Dispatches</span>
+              <span className="block text-xl sm:text-2xl font-black font-mono text-amber-400">
+                {activeOrdersCount} dispatches
+              </span>
+              <span className="block text-[9px] text-zinc-500 font-mono">processing / shipped status</span>
+            </div>
+
+            <div className="bg-[#121316] border border-neutral-850 p-5 rounded-xl space-y-1">
+              <span className="block text-[10px] font-mono text-zinc-400 uppercase tracking-widest font-bold">Catalogue Items</span>
+              <span className="block text-xl sm:text-2xl font-black font-mono text-white text-clip">
+                {products.length} Products
+              </span>
+              <span className="block text-[9px] text-zinc-500 font-mono">live store list size</span>
+            </div>
+          </div>
+
+          {/* Tabs switch panel */}
+          <div className="flex border-b border-neutral-900">
+            <button
+              onClick={() => setActiveTab('orders')}
+              className={`px-6 py-3 font-mono text-xs uppercase tracking-wider font-extrabold cursor-pointer border-b-2 transition-all gap-2 flex items-center ${
+                activeTab === 'orders' 
+                  ? 'border-amber-500 text-amber-400 bg-amber-500/[0.02]' 
+                  : 'border-transparent text-zinc-400 hover:text-white'
+              }`}
+            >
+              💼 Live Customer Orders ({orders.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('inventory')}
+              className={`px-6 py-3 font-mono text-xs uppercase tracking-wider font-extrabold cursor-pointer border-b-2 transition-all gap-2 flex items-center ${
+                activeTab === 'inventory' 
+                  ? 'border-amber-500 text-amber-400 bg-amber-500/[0.02]' 
+                  : 'border-transparent text-zinc-400 hover:text-white'
+              }`}
+            >
+              📦 Product Inventory Manage ({products.length})
+            </button>
+          </div>
+
+          {/* TAB CONTENT 1: REGISTERED SYSTEM ORDERS */}
+          {activeTab === 'orders' && (
+            <div className="space-y-4">
+              {orders.length === 0 ? (
+                <div className="bg-[#121316] border border-neutral-850 p-20 text-center rounded-2xl font-mono text-zinc-500 text-xs">
+                  ⚡ No live order actions on file in the local sandbox registry yet. Place a checkout order down the funnel to view it here live!
+                </div>
+              ) : (
+                <div className="overflow-x-auto bg-[#121316] border border-neutral-850 rounded-2xl shadow-xl">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead>
+                      <tr className="border-b border-neutral-850 bg-neutral-950/60 text-zinc-400 font-mono uppercase text-[9px] tracking-wider font-bold">
+                        <th className="p-4">Order ID & Date</th>
+                        <th className="p-4">Recipient Customer</th>
+                        <th className="p-4">Delivery Coordinates</th>
+                        <th className="p-4">Summary of Items</th>
+                        <th className="p-4 text-center">Amount Price</th>
+                        <th className="p-4 text-center font-bold">Operational Status</th>
+                        <th className="p-4 text-right">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-neutral-900">
+                      {orders.map((o) => {
+                        const totalProductsQty = o.items.reduce((acc, item) => acc + item.quantity, 0);
+                        return (
+                          <tr key={o.id} className="hover:bg-neutral-900/30 transition-colors">
+                            
+                            {/* ID and Date */}
+                            <td className="p-4 font-mono space-y-1">
+                              <span className="block font-bold text-amber-400 select-all font-mono">{o.id}</span>
+                              <span className="block text-[10px] text-zinc-500">{new Date(o.date).toLocaleDateString('en-IN', {
+                                day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit'
+                              })}</span>
+                            </td>
+
+                            {/* Recipient */}
+                            <td className="p-4 font-mono whitespace-nowrap">
+                              <span className="block text-white font-bold">{o.address.name}</span>
+                              <span className="block text-[10px] text-zinc-400">{o.address.phone}</span>
+                            </td>
+
+                            {/* Delivery Location Coordinates */}
+                            <td className="p-4 font-mono max-w-xs">
+                              <span className="block truncate text-zinc-300" title={`${o.address.houseNo}, ${o.address.street}`}>{o.address.houseNo}, {o.address.street}</span>
+                              <span className="block text-[10px] text-zinc-500">{o.address.city}, {o.address.state} - {o.address.pincode}</span>
+                              {o.address.landmark && <span className="block text-[9px] text-amber-500/70 italic">Near: {o.address.landmark}</span>}
+                            </td>
+
+                            {/* Summary / Product Images */}
+                            <td className="p-4 space-y-2">
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {o.items.map((item, idx) => (
+                                  <div key={idx} className="relative h-10 w-9 border border-neutral-800 rounded bg-black shrink-0 group">
+                                    <img 
+                                      src={item.product?.images?.[0]} 
+                                      alt={item.product?.name} 
+                                      className="h-full w-full object-cover rounded" 
+                                      referrerPolicy="no-referrer"
+                                    />
+                                    <span className="absolute -top-1.5 -right-1.5 bg-amber-500 text-black text-[8px] font-black h-3.5 w-3.5 rounded-full flex items-center justify-center">
+                                      {item.quantity}
+                                    </span>
+                                  </div>
+                                ))}
+                              </div>
+                              <span className="block text-[10px] font-mono text-zinc-400 truncate max-w-xs">{totalProductsQty} items ({o.items.map(it => `${it.product?.name} [${it.selectedSize}/${it.selectedColor}]`).join(', ')})</span>
+                            </td>
+
+                            {/* Total Pricing Amount */}
+                            <td className="p-4 text-center font-mono font-black text-white text-sm">
+                              ₹{o.totalAmount}
+                            </td>
+
+                            {/* Status controls */}
+                            <td className="p-4 text-center">
+                              <select
+                                value={o.status}
+                                onChange={(e) => handleUpdateOrderStatus(o.id, e.target.value as any)}
+                                className={`rounded-lg px-2.5 py-1.5 text-[10px] font-bold font-mono outline-none border cursor-pointer ${
+                                  o.status === 'Delivered' ? 'bg-emerald-950/80 text-emerald-400 border-emerald-500/20' :
+                                  o.status === 'Cancelled' ? 'bg-rose-950/80 text-rose-400 border-rose-500/20' :
+                                  o.status === 'Shipped' ? 'bg-blue-950/80 text-blue-400 border-blue-500/20' :
+                                  'bg-amber-950/80 text-amber-400 border-amber-500/20'
+                                }`}
+                              >
+                                <option value="Processing">Processing</option>
+                                <option value="Shipped">Dispatched/Shipped</option>
+                                <option value="Delivered">Delivered</option>
+                                <option value="Cancelled">Cancelled</option>
+                              </select>
+                            </td>
+
+                            {/* Modal Viewer Trigger */}
+                            <td className="p-4 text-right">
+                              <button
+                                onClick={() => setSelectedOrderDetail(o)}
+                                className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-amber-500/30 text-amber-400 hover:bg-neutral-850 cursor-pointer transition-colors"
+                                title="View details sheet"
+                              >
+                                <Eye className="h-4 w-4" />
+                              </button>
+                            </td>
+
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TAB CONTENT 2: LIVE STORE CATALOGUE AND INVENTORY MANAGER */}
+          {activeTab === 'inventory' && (
+            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+              
+              {/* Left Panel: Live catalogue listings with delete functionality */}
+              <div className="lg:col-span-7 space-y-4">
+                <h2 className="text-sm font-mono uppercase font-black text-zinc-400 tracking-wider">
+                  Live Catalogue Index ({products.length} Products)
+                </h2>
+
+                <div className="space-y-3 max-h-[1400px] overflow-y-auto pr-2">
+                  {products.map((p) => (
+                    <div 
+                      key={p.id}
+                      className="bg-[#121316] border border-neutral-850 rounded-2xl p-4 flex items-center justify-between gap-4 hover:border-amber-500/10 transition-all"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-16 w-14 border border-neutral-800 rounded bg-black overflow-hidden shrink-0">
+                          <img 
+                            src={p.images?.[0]} 
+                            alt={p.name} 
+                            className="h-full w-full object-cover" 
+                            referrerPolicy="no-referrer"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="text-xs font-semibold text-white truncate max-w-xs sm:max-w-md block" title={p.name}>{p.name}</span>
+                            {p.tag && (
+                              <span className="text-[8px] bg-amber-500 text-black font-black font-mono px-1.5 rounded uppercase tracking-wide">
+                                {p.tag}
+                              </span>
+                            )}
+                          </div>
+                          
+                          <div className="flex items-center gap-4 text-[10px] font-mono text-zinc-500">
+                            <span>ID: <code className="text-amber-500">{p.id}</code></span>
+                            <span>Category: <strong className="text-zinc-300">{p.category}</strong></span>
+                            <span className="flex items-center gap-0.5 text-amber-400">★ {p.rating}</span>
+                          </div>
+
+                          <div className="flex items-center gap-3 font-mono text-xs pt-0.5">
+                            <span className="text-zinc-400">Actual Price: <strong className="text-white font-black text-xs">₹{p.price}</strong></span>
+                            <span className="text-zinc-600 line-through">Real original: ₹{p.originalPrice}</span>
+                          </div>
+                        </div>
+                      </div>
+
+                      <button
+                        onClick={() => handleDeleteProduct(p.id)}
+                        className="p-2.5 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 border border-rose-900/20 hover:border-rose-500/30 cursor-pointer transition-colors shrink-0"
+                        title="Remove live product"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Right Panel: Add New Product Form */}
+              <div className="lg:col-span-5 bg-[#121316] border border-neutral-850 rounded-2xl p-6 space-y-6">
+                <div>
+                  <h3 className="text-sm font-mono uppercase font-black text-amber-500 tracking-wider">
+                    ⚡ Insert Live Web Product
+                  </h3>
+                  <p className="text-[10px] text-zinc-500 font-mono mt-1 leading-normal">
+                    Fills standard state lists immediately. Changes are saved locally and replicate instantly live across shop shelves!
+                  </p>
+                </div>
+
+                {formSuccess && (
+                  <div className="bg-emerald-950/20 border border-emerald-500/20 text-emerald-400 p-3 rounded-xl font-mono text-xs text-center">
+                    ✓ Product deployed live successfully to all client viewports.
+                  </div>
+                )}
+
+                <form onSubmit={handleAddProduct} className="space-y-4 text-xs font-mono">
+                  
+                  {/* Name field */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] uppercase text-zinc-400 font-bold">Product Title Slogan:</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="e.g. Survivor Heavy-Drape Carapace Tee"
+                      value={newProdName}
+                      onChange={(e) => setNewProdName(e.target.value)}
+                      className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Pricing line (actual vs original) */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] uppercase text-zinc-400 font-bold">Actual Sale Price (₹):</label>
+                      <input
+                        type="number"
+                        required
+                        min={10}
+                        max={10000}
+                        placeholder="999"
+                        value={newProdPrice}
+                        onChange={(e) => setNewProdPrice(Number(e.target.value))}
+                        className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none font-sans"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="block text-[10px] uppercase text-zinc-400 font-bold">Real Original Price (₹):</label>
+                      <input
+                        type="number"
+                        required
+                        min={10}
+                        max={10000}
+                        placeholder="1499"
+                        value={newProdOriginalPrice}
+                        onChange={(e) => setNewProdOriginalPrice(Number(e.target.value))}
+                        className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none font-sans"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Category and Rating */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="block text-[10px] uppercase text-zinc-400 font-bold">Category Selector:</label>
+                      <select
+                        value={newProdCategory}
+                        onChange={(e) => setNewProdCategory(e.target.value)}
+                        className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none cursor-pointer"
+                      >
+                        <option value="Graphic Tees">Graphic Tees</option>
+                        <option value="Plain Tees">Plain Tees</option>
+                        <option value="Oversized">Oversized</option>
+                        <option value="Vintage">Vintage</option>
+                        <option value="Sports">Sports</option>
+                        <option value="Limited Edition">Limited Edition</option>
+                      </select>
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="block text-[10px] uppercase text-zinc-400 font-bold">Launcher Tag:</label>
+                      <select
+                        value={newProdTag}
+                        onChange={(e) => setNewProdTag(e.target.value as any)}
+                        className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none cursor-pointer"
+                      >
+                        <option value="New Arrival">New Arrival</option>
+                        <option value="Best Seller">Best Seller</option>
+                        <option value="Limited Edition">Limited Edition</option>
+                        <option value="20% OFF">20% OFF</option>
+                        <option value="Nuclear Proof">Nuclear Proof</option>
+                      </select>
+                    </div>
+                  </div>
+
+                  {/* Image URL mockup link fallback suggestions */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] uppercase text-zinc-400 font-bold">Fidelity Illustration Image URL:</label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="Https://i.ibb.co/... (png/jpg)"
+                      value={newProdImageUrl}
+                      onChange={(e) => setNewProdImageUrl(e.target.value)}
+                      className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                    />
+                    <div className="flex gap-2 pt-1 font-mono text-[9px] text-zinc-500">
+                      <span>Quick fallback images:</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setNewProdImageUrl('https://i.ibb.co/6cHKvQCg/image.png')} 
+                        className="text-amber-500 underline cursor-pointer"
+                      >
+                        Mascot White
+                      </button>
+                      <span>•</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setNewProdImageUrl('https://i.ibb.co/p6ttbHFp/1764c00a-8954-48db-b06c-d0d71246b7ea.png')} 
+                        className="text-amber-500 underline cursor-pointer"
+                      >
+                        Campaign Black
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Rating selection */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] uppercase text-zinc-400 font-bold">Standard Merit Star Rating (max 5.0):</label>
+                    <input
+                      type="number"
+                      step={0.1}
+                      min={1}
+                      max={5}
+                      value={newProdRating}
+                      onChange={(e) => setNewProdRating(Number(e.target.value))}
+                      className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none font-sans"
+                    />
+                  </div>
+
+                  {/* Description Box */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] uppercase text-zinc-400 font-bold">Product Summary Details:</label>
+                    <textarea
+                      required
+                      rows={3}
+                      placeholder="Write an outstanding description of the fabrics, print resilience features, and vintage streetwear aesthetic appeal."
+                      value={newProdDescription}
+                      onChange={(e) => setNewProdDescription(e.target.value)}
+                      className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-2 text-xs text-white focus:border-amber-400 focus:outline-none"
+                    />
+                  </div>
+
+                  {/* Size togglers list */}
+                  <div className="space-y-1.5">
+                    <label className="block text-[10px] uppercase text-zinc-400 font-bold">Sizes Available:</label>
+                    <div className="flex gap-3">
+                      {['S', 'M', 'L', 'XL', 'XXL'].map((sz) => (
+                        <label key={sz} className="flex items-center gap-1.5 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={newProdSizes.includes(sz)}
+                            onChange={() => toggleSizeCheckbox(sz)}
+                            className="accent-amber-500"
+                          />
+                          <span>{sz}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Specs Lines editor */}
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                      <label className="block text-[10px] uppercase text-zinc-400 font-bold">Specification Bullet Points:</label>
+                      <button
+                        type="button"
+                        onClick={addSpecLine}
+                        className="text-[9px] text-amber-400 border border-amber-500/15 rounded bg-amber-500/5 px-2 py-0.5 hover:bg-amber-500/10 cursor-pointer"
+                      >
+                        + Add Spec Bullet
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      {newProdSpecs.map((spec, sIdx) => (
+                        <input
+                          key={sIdx}
+                          type="text"
+                          placeholder={`Spec detail option line #${sIdx + 1}`}
+                          value={spec}
+                          onChange={(e) => updateSpecLine(sIdx, e.target.value)}
+                          className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-gray-300 focus:border-amber-400 focus:outline-none"
+                        />
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Extra Technical specs */}
+                  <div className="space-y-1">
+                    <label className="block text-[10px] uppercase text-zinc-400 font-bold">Material & Blend:</label>
+                    <input
+                      type="text"
+                      value={newProdMaterial}
+                      onChange={(e) => setNewProdMaterial(e.target.value)}
+                      className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-white"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="block text-[10px] uppercase text-zinc-400 font-bold">Fit Silhouette:</label>
+                    <input
+                      type="text"
+                      value={newProdFit}
+                      onChange={(e) => setNewProdFit(e.target.value)}
+                      className="w-full bg-[#1A1B1E] border border-neutral-850 rounded-xl px-3 py-1.5 text-xs text-white"
+                    />
+                  </div>
+
+                  {/* Submit CTA */}
+                  <button
+                    type="submit"
+                    className="w-full bg-amber-500 hover:bg-amber-600 font-bold text-black font-mono py-3 rounded-xl uppercase tracking-widest text-xs font-black cursor-pointer shadow-lg shadow-amber-500/10 active:scale-[0.98] transition-all"
+                  >
+                    Deploy New Product Live
+                  </button>
+
+                </form>
+              </div>
+
+            </div>
+          )}
+
+          {/* DETAIL DIALOG MODAL SHEET FOR ORDERS */}
+          <AnimatePresence>
+            {selectedOrderDetail && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                <motion.div
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  onClick={() => setSelectedOrderDetail(null)}
+                  className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+                />
+
+                <motion.div
+                  initial={{ scale: 0.95, y: 15, opacity: 0 }}
+                  animate={{ scale: 1, y: 0, opacity: 1 }}
+                  exit={{ scale: 0.95, y: 15, opacity: 0 }}
+                  className="relative bg-[#121316] border border-amber-500/10 rounded-2xl p-6 md:p-8 max-w-2xl w-full text-xs font-mono max-h-[90vh] overflow-y-auto space-y-6 shadow-2xl"
+                >
+                  
+                  {/* Title and Close */}
+                  <div className="flex justify-between items-center border-b border-neutral-850 pb-4">
+                    <div>
+                      <span className="block text-[10px] font-mono text-amber-500 uppercase font-black">EXHAUSTIVE DISPATCH RECORD SCHEMA</span>
+                      <h3 className="text-sm font-bold text-white mt-0.5">Order Reference Key: {selectedOrderDetail.id}</h3>
+                    </div>
+                    <button
+                      onClick={() => setSelectedOrderDetail(null)}
+                      className="p-1.5 rounded-lg bg-neutral-900 border border-neutral-800 hover:border-white text-zinc-400 hover:text-white cursor-pointer transition-colors"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+
+                  {/* Order Recipient Core Info */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-neutral-950/40 p-4 border border-neutral-850 rounded-xl">
+                    <div className="space-y-1.5">
+                      <span className="block text-[9px] uppercase text-zinc-500 font-bold">Recipient Customer details</span>
+                      <p className="text-white text-xs font-bold leading-none">{selectedOrderDetail.address.name}</p>
+                      <p className="text-zinc-400">Mobile Phone: <strong className="text-zinc-300">{selectedOrderDetail.address.phone}</strong></p>
+                      <p className="text-zinc-500">Dispatch Date: {new Date(selectedOrderDetail.date).toLocaleDateString()}</p>
+                    </div>
+                    
+                    <div className="space-y-1.5">
+                      <span className="block text-[9px] uppercase text-zinc-500 font-bold">Delivery Station Coordinates</span>
+                      <p className="text-zinc-300 leading-relaxed font-sans text-[11px]">
+                        {selectedOrderDetail.address.houseNo}, {selectedOrderDetail.address.street}<br />
+                        {selectedOrderDetail.address.city}, {selectedOrderDetail.address.state} - {selectedOrderDetail.address.pincode}
+                      </p>
+                      {selectedOrderDetail.address.landmark && (
+                        <p className="text-[10px] text-amber-500/90 leading-tight">Landmark: {selectedOrderDetail.address.landmark}</p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cart items list detailing images */}
+                  <div className="space-y-2.5">
+                    <span className="block text-[9px] uppercase text-zinc-500 font-bold">Ordered Products Registry ({selectedOrderDetail.items.length} items)</span>
+                    <div className="divide-y divide-neutral-900 border-t border-b border-neutral-850">
+                      {selectedOrderDetail.items.map((item, idx) => (
+                        <div key={idx} className="py-3 flex items-center justify-between gap-4">
+                          <div className="flex items-center gap-3">
+                            <div className="h-14 w-12 border border-neutral-800 rounded bg-black shrink-0 overflow-hidden">
+                              <img 
+                                src={item.product?.images?.[0]} 
+                                alt={item.product?.name} 
+                                className="h-full w-full object-cover" 
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <span className="block text-xs font-bold text-white leading-tight">{item.product?.name}</span>
+                              <div className="flex gap-3 text-[10px] text-zinc-400">
+                                <span>Size: <strong className="text-zinc-300">{item.selectedSize}</strong></span>
+                                <span>Color: <strong className="text-zinc-300">{item.selectedColor}</strong></span>
+                                <span>Quantity: <strong className="text-white font-bold font-sans">{item.quantity}</strong></span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="text-right font-bold text-zinc-300 font-sans whitespace-nowrap">
+                            ₹{item.product?.price} × {item.quantity}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Pricing Total Math Breakdown */}
+                  <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4 border-b border-neutral-850 pb-4">
+                    <div className="space-y-1">
+                      <span className="block text-[9px] uppercase text-zinc-500 font-bold">Transaction Ledger</span>
+                      <div className="flex items-center gap-2.5">
+                        <span className="text-zinc-400">Subtotal Amount: ₹{selectedOrderDetail.subtotal}</span>
+                        <span className="text-zinc-600">|</span>
+                        <span className="text-zinc-400 text-rose-400">Claims Saved: -₹{selectedOrderDetail.discount}</span>
+                        <span className="text-zinc-600">|</span>
+                        <span className="text-zinc-400">Dispatch Fee: ₹{selectedOrderDetail.deliveryCharges}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-right whitespace-nowrap">
+                      <span className="block text-[9px] uppercase text-zinc-500 font-bold">Total billing</span>
+                      <strong className="text-white text-base font-black font-sans">
+                        ₹{selectedOrderDetail.totalAmount}
+                      </strong>
+                    </div>
+                  </div>
+
+                  {/* Status update tunnel inside modal */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pt-1 bg-[#1A1B1E] p-4 rounded-xl border border-neutral-850">
+                    <div className="space-y-0.5">
+                      <span className="block text-[9px] uppercase text-zinc-500 font-bold">Interactive status panel</span>
+                      <p className="text-[10px] text-zinc-300">Set active shipping state for instant client-side update updates.</p>
+                    </div>
+
+                    <div className="flex gap-2.5">
+                      {['Processing', 'Shipped', 'Delivered', 'Cancelled'].map((stat) => (
+                        <button
+                          key={stat}
+                          onClick={() => handleUpdateOrderStatus(selectedOrderDetail.id, stat as any)}
+                          className={`px-3 py-1.5 rounded-lg text-[9px] font-bold uppercase transition-all cursor-pointer border ${
+                            selectedOrderDetail.status === stat
+                              ? 'bg-amber-500 text-black border-amber-500 hover:bg-amber-400 font-black'
+                              : 'bg-neutral-900 text-zinc-400 border-neutral-800 hover:text-white'
+                          }`}
+                        >
+                          {stat}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                </motion.div>
+              </div>
+            )}
+          </AnimatePresence>
+
+        </div>
+      )}
+
+    </div>
+  );
+}

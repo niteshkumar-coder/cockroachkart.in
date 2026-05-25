@@ -1,0 +1,8 @@
+{
+  "name": "Remix: CockroachKart",
+  "description": "Premium Cockroach-Themed T-Shirt E-Commerce website featuring golden-amber colors and survivalist aesthetics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
