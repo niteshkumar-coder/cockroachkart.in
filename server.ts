@@ -25,8 +25,19 @@ app.get("/api/auth/google/url", (req, res) => {
     const clientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
     const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
 
-    if (!clientId || !clientSecret) {
-      // Return custom Google Account Chooser Sandbox URL for beautiful live testing when env keys are absent
+    // Verify if the credentials are valid and fully configured Google OAuth 2.0 Web client credentials.
+    // Real Google Web Client IDs must contain ".apps.googleusercontent.com" to be recognized by Google's OAuth endpoints.
+    const isConfigured = 
+      clientId && 
+      clientSecret && 
+      clientId.includes(".apps.googleusercontent.com") && 
+      !clientId.toUpperCase().includes("YOUR_") &&
+      !clientId.toUpperCase().includes("ENTER_") &&
+      !clientId.toUpperCase().includes("INSERT_") &&
+      !clientId.toUpperCase().includes("TEMP_");
+
+    if (!isConfigured) {
+      // Return custom Google Account Chooser Sandbox URL for beautiful live testing when env keys are absent or invalid
       return res.json({ 
         url: `${clientOrigin}/api/auth/google/sandbox?origin=${encodeURIComponent(clientOrigin)}`,
         configured: false 
