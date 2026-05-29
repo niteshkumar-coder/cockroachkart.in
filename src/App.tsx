@@ -10,6 +10,9 @@ import DashboardPage from './components/screens/DashboardPage';
 import AuthPage from './components/screens/AuthPage';
 import StaticPages from './components/screens/StaticPages';
 import AdminDashboardPage from './components/screens/AdminDashboardPage';
+import { signOut } from 'firebase/auth';
+import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
+import { auth, db, OperationType, handleFirestoreError } from './firebase';
 
 import { 
   Product, 
@@ -138,6 +141,33 @@ export default function App() {
 
   useEffect(() => {
     syncUserData();
+
+    // Async Firestore Fetch for Orders and profile if authenticated via Firebase
+    const fetchFirestoreData = async () => {
+      if (currentUser && currentUser.uid) {
+        try {
+          const ordersRef = collection(db, 'users', currentUser.uid, 'orders');
+          const querySnap = await getDocs(ordersRef);
+          const firebaseOrders: Order[] = [];
+          querySnap.forEach((docSnap) => {
+            firebaseOrders.push(docSnap.data() as Order);
+          });
+          
+          // Sort orders by date descending (most recent first)
+          firebaseOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+          
+          if (firebaseOrders.length > 0) {
+            setOrders(firebaseOrders);
+            const emailKey = currentUser.email.toLowerCase().trim();
+            localStorage.setItem(`cockroach_orders_${emailKey}`, JSON.stringify(firebaseOrders));
+          }
+        } catch (err) {
+          console.error("Failed to load user orders from Firestore:", err);
+        }
+      }
+    };
+
+    fetchFirestoreData();
   }, [currentUser]);
 
   // Hook up real-time cross-tab and same-tab synchronization listeners
@@ -270,7 +300,7 @@ export default function App() {
   };
 
   // Order management triggers with automated user synchronization
-  const handleOrderPlaced = (newOrder: Order) => {
+  const handleOrderPlaced = async (newOrder: Order) => {
     setOrders(prev => {
       const next = [newOrder, ...prev];
       if (currentUser?.email) {
@@ -280,9 +310,19 @@ export default function App() {
       return next;
     });
     setLatestPlacedOrder(newOrder);
+
+    // Sync placement to Firestore if user has a uid!
+    if (currentUser?.uid) {
+      try {
+        const orderRef = doc(db, 'users', currentUser.uid, 'orders', newOrder.id);
+        await setDoc(orderRef, newOrder);
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}/orders/${newOrder.id}`);
+      }
+    }
   };
 
-  const handleCancelOrder = (id: string) => {
+  const handleCancelOrder = async (id: string) => {
     setOrders(prev => {
       const next = prev.map(o => o.id === id ? { ...o, status: 'Cancelled' } : o);
       if (currentUser?.email) {
@@ -291,6 +331,16 @@ export default function App() {
       }
       return next;
     });
+
+    // Sync state update to Firestore if user has a uid!
+    if (currentUser?.uid) {
+      try {
+        const orderRef = doc(db, 'users', currentUser.uid, 'orders', id);
+        await setDoc(orderRef, { status: 'Cancelled', updatedAt: new Date().toISOString() }, { merge: true });
+      } catch (err) {
+        handleFirestoreError(err, OperationType.WRITE, `users/${currentUser.uid}/orders/${id}`);
+      }
+    }
   };
 
   const handleReorder = (pastOrder: Order) => {
@@ -314,6 +364,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    signOut(auth).catch((err) => console.error("Firebase logout error:", err));
     setCurrentUser(null);
     localStorage.removeItem('cockroach_current_user');
     setWishlist([]);
