@@ -31,84 +31,109 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
   // Fallback / Guidance help toggles
   const [showPopupTips, setShowPopupTips] = useState(false);
 
-  // 1. Google Auth Connection Handler (Popup based)
+  // 1. Google Auth Connection Handler (Custom Backend/Sandbox Redirect Protocol)
   const handleGoogleSignInByPopup = async () => {
     setAuthError('');
     setConnecting(true);
     setShowPopupTips(false);
 
     try {
-      const provider = new GoogleAuthProvider();
-      provider.setCustomParameters({
-        prompt: 'select_account'
-      });
+      const origin = window.location.origin;
+      const response = await fetch(`/api/auth/google/url?origin=${encodeURIComponent(origin)}`);
       
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
+      if (!response.ok) {
+        throw new Error("Could not retrieve authorization credentials from the backend server.");
+      }
+      
+      const data = await response.json();
+      const authUrl = data.url;
 
-      if (!firebaseUser || !firebaseUser.email) {
-        throw new Error("Could not retrieve a valid email from your Google account.");
+      // Calculate perfect centering for popup window coords
+      const width = 500;
+      const height = 650;
+      const left = window.screen.width / 2 - width / 2;
+      const top = window.screen.height / 2 - height / 2;
+      
+      const popup = window.open(
+        authUrl,
+        'google-oauth-popup',
+        `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
+      );
+
+      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+        // Popups are blocked by browser iframe constraints
+        setShowPopupTips(true);
+        setConnecting(false);
+        setAuthError("Popup blocked by browser. Please look at your URL bar's right corner to 'Always allow', OR click 'Open in a new tab' at the top-right of your screen.");
+        return;
       }
 
-      // Check if user profile already exists in Firestore
-      const userDocRef = doc(db, 'users', firebaseUser.uid);
-      let userDocSnap;
-      try {
-        userDocSnap = await getDoc(userDocRef);
-      } catch (err) {
-        handleFirestoreError(err, OperationType.GET, `users/${firebaseUser.uid}`);
-      }
+      // Secure event listener to listen to postMessage events from the opened popup
+      const handleAuthMessage = async (event: MessageEvent) => {
+        if (event.origin !== window.location.origin) return;
 
-      if (userDocSnap && userDocSnap.exists()) {
-        const existingProfile = userDocSnap.data();
-        localStorage.setItem('cockroach_current_user', JSON.stringify(existingProfile));
-        onLoginSuccess(existingProfile);
-      } else {
-        // Brand New User in database
-        const registrationData = {
-          uid: firebaseUser.uid,
-          name: firebaseUser.displayName || '',
-          email: firebaseUser.email,
-          avatarUrl: firebaseUser.photoURL || '',
-          phone: firebaseUser.phoneNumber || ''
-        };
+        if (event.data && event.data.type === 'OAUTH_AUTH_SUCCESS') {
+          window.removeEventListener('message', handleAuthMessage);
+          
+          const profile = event.data.user;
+          const safeUid = 'sso_' + profile.email.replace(/[^a-zA-Z0-9]/g, '');
 
-        if (registrationData.name.trim()) {
-          const completedProfile = {
-            uid: registrationData.uid,
-            name: registrationData.name.trim(),
-            email: registrationData.email.trim().toLowerCase(),
-            phone: registrationData.phone || "Google Verified",
-            avatarUrl: registrationData.avatarUrl,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-
+          // Check if profile exists in Firestore, otherwise write a new record
           try {
-            await setDoc(doc(db, 'users', completedProfile.uid), completedProfile);
-          } catch (err) {
-            handleFirestoreError(err, OperationType.WRITE, `users/${completedProfile.uid}`);
-          }
+            const userDocRef = doc(db, 'users', safeUid);
+            const userDocSnap = await getDoc(userDocRef);
+            
+            let completedProfile;
+            if (userDocSnap && userDocSnap.exists()) {
+              completedProfile = userDocSnap.data();
+            } else {
+              completedProfile = {
+                uid: safeUid,
+                name: profile.name.trim(),
+                email: profile.email.trim().toLowerCase(),
+                phone: profile.phone || "Google Verified",
+                avatarUrl: profile.avatarUrl || "",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              await setDoc(userDocRef, completedProfile);
+            }
 
-          localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
-          onLoginSuccess(completedProfile);
-        } else {
-          setTempGoogleUser(registrationData);
-          setName('');
-          setStep('profile');
+            localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
+            onLoginSuccess(completedProfile);
+          } catch (firestoreErr: any) {
+            console.warn("Firestore error during Google auth login mapping. Falling back to local SSO:", firestoreErr);
+            
+            // Fallback: Local auth storage persistence in case Firestore is not fully configured
+            const fallbackProfile = {
+              uid: safeUid,
+              name: profile.name.trim(),
+              email: profile.email.trim().toLowerCase(),
+              phone: "Google Verified Survivor",
+              avatarUrl: profile.avatarUrl || "",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
+            onLoginSuccess(fallbackProfile);
+          }
         }
-      }
+      };
+
+      window.addEventListener('message', handleAuthMessage);
+
+      // Periodically check if popup is closed to reset loading state
+      const checker = setInterval(() => {
+        if (popup.closed) {
+          clearInterval(checker);
+          setConnecting(false);
+        }
+      }, 800);
+
     } catch (err: any) {
       setConnecting(false);
-      console.error("Firebase Google Login Error:", err);
-      if (err.code === 'auth/popup-blocked') {
-        setShowPopupTips(true);
-        setAuthError("Popup blocked by browser. Please enable popups/redirects to sign in, OR use the email form below.");
-      } else if (err.code === 'auth/closed-by-user') {
-        setAuthError("Sign-in popup was closed before completing authentication.");
-      } else {
-        setAuthError(err.message || "Failed to authenticate your Google profile via Firebase.");
-      }
+      console.error("Custom Google Authentication Error:", err);
+      setAuthError(err.message || "Failed to launch custom Google Handshake interface.");
     }
   };
 
