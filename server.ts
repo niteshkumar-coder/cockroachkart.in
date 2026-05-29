@@ -15,7 +15,10 @@ app.use(express.json());
 
 // Google OAuth 2.0 Auth URL Generation Endpoint
 app.get("/api/auth/google/url", (req, res) => {
-  const clientOrigin = (req.query.origin as string) || "https://ais-pre-7hirokhrudwaql4i3udrj4-582044349376.asia-southeast1.run.app";
+  const host = req.get("host") || "";
+  const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
+  const fallbackOrigin = isLocal ? `http://${host}` : `https://${host}`;
+  const clientOrigin = (req.query.origin as string) || process.env.APP_URL || fallbackOrigin;
   const redirectUri = `${clientOrigin}/auth/callback`;
 
   const clientId = process.env.GOOGLE_CLIENT_ID || "";
@@ -47,7 +50,19 @@ app.get("/api/auth/google/url", (req, res) => {
 // Google OAuth 2.0 Login Callback Handler
 app.get(["/auth/callback", "/auth/callback/"], async (req, res) => {
   const { code } = req.query;
-  const clientOrigin = (req.headers.referer ? new URL(req.headers.referer).origin : "") || process.env.APP_URL || "";
+
+  let clientOrigin = "";
+  const referer = req.headers.referer;
+  if (referer && !referer.includes("accounts.google.com")) {
+    try {
+      clientOrigin = new URL(referer).origin;
+    } catch (e) {}
+  }
+  if (!clientOrigin) {
+    const host = req.get("host") || "";
+    const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
+    clientOrigin = isLocal ? `http://${host}` : `https://${host}`;
+  }
 
   if (!code) {
     return res.send(`

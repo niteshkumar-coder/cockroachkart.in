@@ -26,6 +26,7 @@ export default function AdminDashboardPage({
 
   // Tab Manager: 'orders' | 'inventory'
   const [activeTab, setActiveTab] = useState<'orders' | 'inventory'>('orders');
+  const [hoveredSlice, setHoveredSlice] = useState<string | null>(null);
 
   // Orders list state
   const [orders, setOrders] = useState<Order[]>([]);
@@ -522,64 +523,290 @@ export default function AdminDashboardPage({
           )}
 
           {/* TAB CONTENT 2: LIVE STORE CATALOGUE AND INVENTORY MANAGER */}
-          {activeTab === 'inventory' && (
-            <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
-              
-              {/* Left Panel: Live catalogue listings with delete functionality */}
-              <div className="lg:col-span-7 space-y-4">
-                <h2 className="text-sm font-mono uppercase font-black text-zinc-400 tracking-wider">
-                  Live Catalogue Index ({products.length} Products)
-                </h2>
+          {activeTab === 'inventory' && (() => {
+            // Compute category distributions
+            const categoryCounts = products.reduce((acc: {[key: string]: number}, p) => {
+              const cat = p.category || "Graphic Tees";
+              acc[cat] = (acc[cat] || 0) + 1;
+              return acc;
+            }, {});
 
-                <div className="space-y-3 max-h-[1400px] overflow-y-auto pr-2">
-                  {products.map((p) => (
-                    <div 
-                      key={p.id}
-                      className="bg-[#121316] border border-neutral-850 rounded-2xl p-4 flex items-center justify-between gap-4 hover:border-amber-500/10 transition-all"
-                    >
-                      <div className="flex items-center gap-4">
-                        <div className="h-16 w-14 border border-neutral-800 rounded bg-black overflow-hidden shrink-0">
-                          <img 
-                            src={p.images?.[0]} 
-                            alt={p.name} 
-                            className="h-full w-full object-cover" 
-                            referrerPolicy="no-referrer"
-                          />
-                        </div>
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="text-xs font-semibold text-white truncate max-w-xs sm:max-w-md block" title={p.name}>{p.name}</span>
-                            {p.tag && (
-                              <span className="text-[8px] bg-amber-500 text-black font-black font-mono px-1.5 rounded uppercase tracking-wide">
-                                {p.tag}
-                              </span>
+            const totalProducts = products.length;
+            
+            // Custom high-contrast brand color layout coordinates
+            const categoryColors: {[key: string]: string} = {
+              'Graphic Tees': '#F59E0B',      // amber-500
+              'Plain Tees': '#3B82F6',        // blue-400
+              'Oversized': '#10B981',         // emerald-500
+              'Vintage': '#8B5CF6',           // violet-500
+              'Sports': '#EC4899',            // pink-500
+              'Limited Edition': '#F43F5E',   // rose-500
+              'Other': '#6B7280'              // gray-500
+            };
+
+            const chartData = Object.entries(categoryCounts).map(([name, value]) => ({
+              name,
+              value,
+              percentage: totalProducts > 0 ? (value / totalProducts) * 100 : 0,
+              color: categoryColors[name] || '#6B7280'
+            })).sort((a, b) => b.value - a.value);
+
+            // Generate circular arc donut segments
+            let accumulatedAngle = -Math.PI / 2; // start from 12 o'clock
+            const cx = 120;
+            const cy = 120;
+
+            const slices = chartData.map((slice) => {
+              const fraction = totalProducts > 0 ? slice.value / totalProducts : 0;
+              const angleWidth = fraction * Math.PI * 2;
+              const startAngle = accumulatedAngle;
+              const endAngle = accumulatedAngle + angleWidth;
+              accumulatedAngle = endAngle;
+
+              const midAngle = (startAngle + endAngle) / 2;
+              const isHovered = hoveredSlice === slice.name;
+
+              // Shift slightly outward on hovered focus
+              const shift = isHovered ? 6 : 0;
+              const shiftX = Math.cos(midAngle) * shift;
+              const shiftY = Math.sin(midAngle) * shift;
+
+              const sliceCx = cx + shiftX;
+              const sliceCy = cy + shiftY;
+
+              // Radius boundaries
+              const rout = isHovered ? 98 : 90;
+              const rin = 58;
+
+              // Vector coordinates points
+              const x_out_start = sliceCx + rout * Math.cos(startAngle);
+              const y_out_start = sliceCy + rout * Math.sin(startAngle);
+              const x_out_end = sliceCx + rout * Math.cos(endAngle);
+              const y_out_end = sliceCy + rout * Math.sin(endAngle);
+
+              const x_in_end = sliceCx + rin * Math.cos(endAngle);
+              const y_in_end = sliceCy + rin * Math.sin(endAngle);
+              const x_in_start = sliceCx + rin * Math.cos(startAngle);
+              const y_in_start = sliceCy + rin * Math.sin(startAngle);
+
+              const largeArc = angleWidth > Math.PI ? 1 : 0;
+
+              // Generate Path D coordinate coordinates
+              let pathD = "";
+              if (fraction >= 0.99) {
+                // Perfect single circle fallback to prevent SVG coordinates break
+                pathD = `
+                  M ${sliceCx} ${sliceCy - rout}
+                  A ${rout} ${rout} 0 1 1 ${sliceCx - 0.01} ${sliceCy - rout}
+                  M ${sliceCx} ${sliceCy - rin}
+                  A ${rin} ${rin} 0 1 0 ${sliceCx - 0.01} ${sliceCy - rin}
+                  Z
+                `;
+              } else {
+                pathD = `
+                  M ${x_out_start} ${y_out_start}
+                  A ${rout} ${rout} 0 ${largeArc} 1 ${x_out_end} ${y_out_end}
+                  L ${x_in_end} ${y_in_end}
+                  A ${rin} ${rin} 0 ${largeArc} 0 ${x_in_start} ${y_in_start}
+                  Z
+                `;
+              }
+
+              return {
+                name: slice.name,
+                value: slice.value,
+                percentage: slice.percentage,
+                color: slice.color,
+                pathD,
+                isHovered
+              };
+            });
+
+            return (
+              <div className="space-y-8">
+                
+                {/* Visual Category Distribution Dashboard Widget */}
+                <div className="bg-[#121316] border border-neutral-850 rounded-2xl p-6 shadow-xl">
+                  <div className="pb-4 border-b border-neutral-900 mb-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                    <div>
+                      <h3 className="text-sm font-mono uppercase font-black text-amber-500 tracking-wider">
+                        📈 Catalog Category Distribution
+                      </h3>
+                      <p className="text-[10px] text-zinc-500 font-mono mt-1 leading-normal">
+                        Visualizing live inventory balance and pricing segments of CockroachKart.
+                      </p>
+                    </div>
+                    {totalProducts > 0 && (
+                      <span className="text-[10px] font-mono text-zinc-400 bg-black/40 border border-neutral-850 px-3 py-1.5 rounded-lg shrink-0">
+                        Total items represented: <strong className="text-amber-400 font-bold">{totalProducts} products</strong>
+                      </span>
+                    )}
+                  </div>
+
+                  {totalProducts === 0 ? (
+                    <div className="text-center py-10 font-mono text-zinc-500 text-xs">
+                      No inventory on file. Insert products below to display catalog metrics.
+                    </div>
+                  ) : (
+                    <div className="grid grid-cols-1 md:grid-cols-12 gap-8 items-center">
+                      
+                      {/* Left: Responsive Interactive SVG Wheel */}
+                      <div className="md:col-span-5 flex justify-center relative">
+                        <div className="relative h-[240px] w-[240px]">
+                          <svg viewBox="0 0 240 240" className="w-full h-full">
+                            <g className="transition-all duration-300">
+                              {slices.map((slice) => (
+                                <path
+                                  key={slice.name}
+                                  d={slice.pathD}
+                                  fill={slice.color}
+                                  onMouseEnter={() => setHoveredSlice(slice.name)}
+                                  onMouseLeave={() => setHoveredSlice(null)}
+                                  className="transition-all duration-200 cursor-pointer hover:opacity-90"
+                                  style={{
+                                    filter: slice.isHovered ? 'drop-shadow(0 4px 12px rgba(245, 158, 11, 0.15))' : 'none'
+                                  }}
+                                />
+                              ))}
+                            </g>
+                          </svg>
+
+                          {/* Donut graphic Center text info */}
+                          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none text-center select-none font-mono px-6">
+                            {hoveredSlice ? (() => {
+                              const hoveredData = chartData.find(d => d.name === hoveredSlice);
+                              return (
+                                <>
+                                  <span className="text-[9px] text-zinc-500 uppercase tracking-wider font-extrabold truncate w-32">
+                                    {hoveredSlice}
+                                  </span>
+                                  <span className="text-xl font-black mt-0.5 text-amber-500">
+                                    {hoveredData?.value} {hoveredData?.value === 1 ? 'Item' : 'Items'}
+                                  </span>
+                                  <span className="text-[10px] text-zinc-400">
+                                    {hoveredData?.percentage.toFixed(1)}% share
+                                  </span>
+                                </>
+                              );
+                            })() : (
+                              <>
+                                <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">
+                                  Catalog Size
+                                </span>
+                                <span className="text-2xl font-black mt-0.5 text-white">
+                                  {totalProducts}
+                                </span>
+                                <span className="text-[10px] text-amber-500">
+                                  Products
+                                </span>
+                              </>
                             )}
-                          </div>
-                          
-                          <div className="flex items-center gap-4 text-[10px] font-mono text-zinc-500">
-                            <span>ID: <code className="text-amber-500">{p.id}</code></span>
-                            <span>Category: <strong className="text-zinc-300">{p.category}</strong></span>
-                            <span className="flex items-center gap-0.5 text-amber-400">★ {p.rating}</span>
-                          </div>
-
-                          <div className="flex items-center gap-3 font-mono text-xs pt-0.5">
-                            <span className="text-zinc-400">Actual Price: <strong className="text-white font-black text-xs">₹{p.price}</strong></span>
-                            <span className="text-zinc-600 line-through">Real original: ₹{p.originalPrice}</span>
                           </div>
                         </div>
                       </div>
 
-                      <button
-                        onClick={() => handleDeleteProduct(p.id)}
-                        className="p-2.5 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 border border-rose-900/20 hover:border-rose-500/30 cursor-pointer transition-colors shrink-0"
-                        title="Remove live product"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
+                      {/* Right: Legends with metrics progress bars */}
+                      <div className="md:col-span-7 grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {chartData.map((category) => (
+                          <div 
+                            key={category.name}
+                            onMouseEnter={() => setHoveredSlice(category.name)}
+                            onMouseLeave={() => setHoveredSlice(null)}
+                            className={`p-3 rounded-xl border border-neutral-850/50 bg-neutral-900/10 hover:bg-neutral-900/40 hover:border-amber-500/15 transition-all flex items-center justify-between gap-4 cursor-pointer ${
+                              hoveredSlice === category.name ? 'border-amber-500/20 bg-neutral-900/45 scale-[1.01]' : ''
+                            }`}
+                          >
+                            <div className="space-y-1.5 flex-1 min-w-0">
+                              <div className="flex items-center justify-between gap-2 text-[10px] font-mono leading-none">
+                                <div className="flex items-center gap-2 font-bold text-white truncate max-w-[120px]">
+                                  <span 
+                                    className="h-2 w-2 rounded-full shrink-0" 
+                                    style={{ backgroundColor: category.color }}
+                                  />
+                                  <span>{category.name}</span>
+                                </div>
+                                <div className="text-gray-400 font-bold shrink-0">
+                                  {category.value} {category.value === 1 ? 'item' : 'items'} ({category.percentage.toFixed(1)}%)
+                                </div>
+                              </div>
+                              
+                              {/* Distribution progress bar */}
+                              <div className="h-1.5 w-full bg-neutral-950 rounded-full overflow-hidden">
+                                <div 
+                                  className="h-full rounded-full transition-all duration-300"
+                                  style={{ 
+                                    backgroundColor: category.color,
+                                    width: `${category.percentage}%` 
+                                  }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
                     </div>
-                  ))}
+                  )}
                 </div>
-              </div>
+
+                {/* Live listings and product registration panel section */}
+                <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+                  
+                  {/* Left Panel: Live catalogue listings with delete functionality */}
+                  <div className="lg:col-span-7 space-y-4">
+                    <h2 className="text-sm font-mono uppercase font-black text-zinc-400 tracking-wider">
+                      Live Catalogue Index ({products.length} Products)
+                    </h2>
+
+                    <div className="space-y-3 max-h-[1400px] overflow-y-auto pr-2">
+                      {products.map((p) => (
+                        <div 
+                          key={p.id}
+                          className="bg-[#121316] border border-neutral-850 rounded-2xl p-4 flex items-center justify-between gap-4 hover:border-amber-500/10 transition-all"
+                        >
+                          <div className="flex items-center gap-4">
+                            <div className="h-16 w-14 border border-neutral-800 rounded bg-black overflow-hidden shrink-0">
+                              <img 
+                                src={p.images?.[0]} 
+                                alt={p.name} 
+                                className="h-full w-full object-cover" 
+                                referrerPolicy="no-referrer"
+                              />
+                            </div>
+                            <div className="space-y-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <span className="text-xs font-semibold text-white truncate max-w-xs sm:max-w-md block" title={p.name}>{p.name}</span>
+                                {p.tag && (
+                                  <span className="text-[8px] bg-amber-500 text-black font-black font-mono px-1.5 rounded uppercase tracking-wide">
+                                    {p.tag}
+                                  </span>
+                                )}
+                              </div>
+                              
+                              <div className="flex items-center gap-4 text-[10px] font-mono text-zinc-500">
+                                <span>ID: <code className="text-amber-500">{p.id}</code></span>
+                                <span>Category: <strong className="text-zinc-300">{p.category}</strong></span>
+                                <span className="flex items-center gap-0.5 text-amber-400">★ {p.rating}</span>
+                              </div>
+
+                              <div className="flex items-center gap-3 font-mono text-xs pt-0.5">
+                                <span className="text-zinc-400">Actual Price: <strong className="text-white font-black text-xs">₹{p.price}</strong></span>
+                                <span className="text-zinc-650 line-through">Real original: ₹{p.originalPrice}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => handleDeleteProduct(p.id)}
+                            className="p-2.5 rounded-xl bg-rose-950/20 hover:bg-rose-950/40 text-rose-400 border border-rose-900/20 hover:border-rose-500/30 cursor-pointer transition-colors shrink-0"
+                            title="Remove live product"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
 
               {/* Right Panel: Add New Product Form */}
               <div className="lg:col-span-5 bg-[#121316] border border-neutral-850 rounded-2xl p-6 space-y-6">
@@ -812,7 +1039,9 @@ export default function AdminDashboardPage({
               </div>
 
             </div>
-          )}
+          </div>
+        );
+      })()}
 
           {/* DETAIL DIALOG MODAL SHEET FOR ORDERS */}
           <AnimatePresence>
