@@ -1,6 +1,35 @@
 <!doctype html>
 <html lang="en">
   <head>
+    <script>
+      // Safe sandbox execution wrapper to resolve fetch-only-getter errors for Firebase/formdata-polyfill
+      (function() {
+        var originalFetch = window.fetch || (typeof globalThis !== 'undefined' ? globalThis.fetch : null);
+        if (originalFetch) {
+          var currentFetch = originalFetch;
+          var targets = [window];
+          if (typeof globalThis !== 'undefined' && globalThis !== window) {
+            targets.push(globalThis);
+          }
+          targets.forEach(function(target) {
+            try {
+              Object.defineProperty(target, 'fetch', {
+                configurable: true,
+                enumerable: true,
+                get: function() {
+                  return currentFetch;
+                },
+                set: function(v) {
+                  currentFetch = v;
+                }
+              });
+            } catch (e) {
+              console.warn("[Fetch Patch] Failed to define fetch setter:", e);
+            }
+          });
+        }
+      })();
+    </script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CockroachKart | Wear the Unstoppable Style</title>
