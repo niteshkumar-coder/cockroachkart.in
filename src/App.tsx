@@ -331,7 +331,7 @@ export default function App() {
   }, [currentUser, currentScreen]);
 
   return (
-    <div className="flex min-h-screen flex-col bg-[#0D0D0D] font-sans antialiased text-white selection:bg-amber-500 selection:text-black">
+    <div className="flex min-h-screen w-full overflow-x-hidden flex-col bg-[#0D0D0D] font-sans antialiased text-white selection:bg-amber-500 selection:text-black">
       
       {/* Dynamic Unified Sticky Header */}
       <Header

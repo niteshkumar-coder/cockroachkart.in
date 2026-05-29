@@ -168,7 +168,14 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
       <div className="w-full max-w-md bg-[#141414] border border-amber-500/10 rounded-3xl p-6 sm:p-10 shadow-2xl space-y-6 relative overflow-hidden">
         
         {/* Decorative Watermark bg */}
-        <div className="absolute top-0 right-0 p-6 select-none opacity-5 text-8xl">🪳</div>
+        <div className="absolute -top-10 -right-10 select-none opacity-[0.03] h-36 w-36 pointer-events-none">
+          <img 
+            src="https://i.ibb.co/LhkQwD3z/Gemini-Generated-Image-noyty8noyty8noyt-1-removebg-preview.png" 
+            alt="" 
+            className="h-full w-full object-contain filter invert opacity-50" 
+            referrerPolicy="no-referrer"
+          />
+        </div>
 
         <AnimatePresence mode="wait">
           {step === 'entry' && (

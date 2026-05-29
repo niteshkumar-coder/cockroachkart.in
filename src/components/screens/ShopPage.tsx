@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { motion } from 'motion/react';
-import { Filter, Star, X, Grid, List, RefreshCw } from 'lucide-react';
+import { Filter, Star, X, Grid, List, RefreshCw, Inbox } from 'lucide-react';
 import { Product, ScreenType, FilterState } from '../../types';
 import ProductCard from '../ProductCard';
 
@@ -241,7 +241,7 @@ export default function ShopPage({
           <div className="lg:col-span-3 space-y-8">
             {sortedProducts.length === 0 ? (
               <div className="border border-dashed border-amber-500/20 rounded-2xl p-16 text-center space-y-4 bg-amber-500/[0.01]">
-                <div className="text-5xl select-none">🪳💧</div>
+                <Inbox className="h-12 w-12 mx-auto text-amber-500/40 animate-pulse" />
                 <h3 className="font-bold font-mono text-sm uppercase tracking-wider text-amber-400">Empty Hive!</h3>
                 <p className="text-xs text-neutral-500 max-w-sm mx-auto">No surviving apparel modules matched the requested attributes. Adjust filters or search terms to try again.</p>
                 <button

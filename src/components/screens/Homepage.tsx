@@ -73,7 +73,7 @@ export default function Homepage({
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.6 }}
-            className="text-5xl sm:text-7xl lg:text-8.5xl font-black tracking-wider text-white font-sans uppercase"
+            className="text-[40px] leading-tight min-[400px]:text-5xl sm:text-7xl lg:text-8.5xl font-black tracking-wider text-white font-sans uppercase"
             style={{ textShadow: "4px 4px 0px #000, -2px -2px 0px #000" }}
           >
             COCKROACH
@@ -86,18 +86,18 @@ export default function Homepage({
             className="inline-flex items-center gap-3 mt-1 sm:mt-2"
           >
             {/* Left Tricolor lines */}
-            <div className="flex flex-col gap-1 w-8 sm:w-16 shrink-0">
+            <div className="hidden min-[450px]:flex flex-col gap-1 w-8 sm:w-16 shrink-0">
               <div className="h-1 bg-[#FF7A00] rounded-sm" />
               <div className="h-1 bg-white rounded-sm" />
               <div className="h-1 bg-[#0F5E2B] rounded-sm" />
             </div>
 
-            <span className="text-xl sm:text-3.5xl lg:text-4.5xl font-black text-[#0D9F3F] font-mono tracking-widest uppercase" style={{ textShadow: "2px 2px 0px #000" }}>
+            <span className="text-lg min-[360px]:text-xl sm:text-3.5xl lg:text-4.5xl font-black text-[#0D9F3F] font-mono tracking-widest uppercase" style={{ textShadow: "2px 2px 0px #000" }}>
               JANTA PARTY!
             </span>
 
             {/* Right Tricolor lines */}
-            <div className="flex flex-col gap-1 w-8 sm:w-16 shrink-0">
+            <div className="hidden min-[450px]:flex flex-col gap-1 w-8 sm:w-16 shrink-0">
               <div className="h-1 bg-[#FF7A00] rounded-sm" />
               <div className="h-1 bg-white rounded-sm" />
               <div className="h-1 bg-[#0F5E2B] rounded-sm" />
@@ -135,7 +135,7 @@ export default function Homepage({
           </div>
 
           {/* Right panel: Showcase of the 3 majestic T-shirts directly matching the products list */}
-          <div className="flex items-center justify-center gap-4 sm:gap-6 w-full lg:w-auto justify-items-center">
+          <div className="flex items-center justify-center gap-3 sm:gap-6 w-full lg:w-auto justify-items-center flex-wrap md:flex-nowrap">
             
             {/* T-Shirt 1 (Black Mascot) */}
             <motion.div
@@ -145,7 +145,7 @@ export default function Homepage({
                 setSelectedProduct(prod);
                 setScreen('detail');
               }}
-              className="group cursor-pointer w-[30%] sm:w-36 md:w-44 lg:w-48 relative border border-neutral-800 bg-[#161618]/95 hover:bg-[#1c1c1e] p-2.5 sm:p-4 rounded-3xl shadow-2xl hover:border-[#FF7A00]/50 transition-all text-center"
+              className="group cursor-pointer w-[28%] min-w-[92px] sm:w-36 md:w-44 lg:w-48 relative border border-neutral-800 bg-[#161618]/95 hover:bg-[#1c1c1e] p-2 sm:p-4 rounded-3xl shadow-2xl hover:border-[#FF7A00]/50 transition-all text-center"
             >
               <div className="absolute -top-1.5 -right-1 sm:-top-2 sm:-right-1.5 z-20 bg-[#FF7A00] text-black text-[7px] sm:text-[9px] font-mono font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
                 BEST
@@ -175,7 +175,7 @@ export default function Homepage({
                 setSelectedProduct(prod);
                 setScreen('detail');
               }}
-              className="group cursor-pointer w-[30%] sm:w-36 md:w-44 lg:w-48 relative border border-neutral-800 bg-[#161618]/95 hover:bg-[#1c1c1e] p-2.5 sm:p-4 rounded-3xl shadow-2xl hover:border-white/50 transition-all text-center"
+              className="group cursor-pointer w-[28%] min-w-[92px] sm:w-36 md:w-44 lg:w-48 relative border border-neutral-800 bg-[#161618]/95 hover:bg-[#1c1c1e] p-2 sm:p-4 rounded-3xl shadow-2xl hover:border-white/50 transition-all text-center"
             >
               <div className="absolute -top-1.5 -right-1 sm:-top-2 sm:-right-1.5 z-20 bg-neutral-100 text-black text-[7px] sm:text-[9px] font-mono font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
                 RALLY
@@ -205,7 +205,7 @@ export default function Homepage({
                 setSelectedProduct(prod);
                 setScreen('detail');
               }}
-              className="group cursor-pointer w-[30%] sm:w-36 md:w-44 lg:w-48 relative border border-neutral-800 bg-[#161618]/95 hover:bg-[#1c1c1e] p-2.5 sm:p-4 rounded-3xl shadow-2xl hover:border-[#10b981]/50 transition-all text-center"
+              className="group cursor-pointer w-[28%] min-w-[92px] sm:w-36 md:w-44 lg:w-48 relative border border-neutral-800 bg-[#161618]/95 hover:bg-[#1c1c1e] p-2 sm:p-4 rounded-3xl shadow-2xl hover:border-[#10b981]/50 transition-all text-center"
             >
               <div className="absolute -top-1.5 -right-1 sm:-top-2 sm:-right-1.5 z-20 bg-[#0F5E2B] text-white text-[7px] sm:text-[9px] font-mono font-black px-2 py-0.5 rounded-full uppercase tracking-wider">
                 SLOGAN

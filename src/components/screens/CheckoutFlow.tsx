@@ -509,8 +509,13 @@ export default function CheckoutFlow({
         {/* --- STEP 3: ORDER CONFIRMED GRAPHICS --- */}
         {currentStep === 'confirmation' && latestPlacedOrder && (
           <div className="max-w-2xl mx-auto border border-amber-500/15 rounded-3xl bg-[#141414] p-8 sm:p-12 text-center relative overflow-hidden space-y-8 shadow-2xl">
-            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 select-none opacity-[0.01] pointer-events-none text-[320px]">
-              🪳
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 select-none opacity-[0.02] pointer-events-none h-80 w-80">
+              <img 
+                src="https://i.ibb.co/LhkQwD3z/Gemini-Generated-Image-noyty8noyty8noyt-1-removebg-preview.png" 
+                alt="" 
+                className="h-full w-full object-contain filter invert opacity-50" 
+                referrerPolicy="no-referrer"
+              />
             </div>
 
             {/* Simulated micro confetti gold circles */}

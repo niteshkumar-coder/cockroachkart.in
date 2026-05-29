@@ -78,7 +78,14 @@ export default function DashboardPage({
           <div className="lg:col-span-1 space-y-4">
             
             <div className="bg-[#141414] border border-neutral-850 rounded-2xl p-6 text-center space-y-3 relative overflow-hidden">
-              <div className="absolute top-0 right-0 p-3 select-none opacity-5 text-4xl">🪳</div>
+              <div className="absolute -top-4 -right-4 select-none opacity-[0.03] h-16 w-16 pointer-events-none">
+                <img 
+                  src="https://i.ibb.co/LhkQwD3z/Gemini-Generated-Image-noyty8noyty8noyt-1-removebg-preview.png" 
+                  alt="" 
+                  className="h-full w-full object-contain filter invert opacity-50" 
+                  referrerPolicy="no-referrer"
+                />
+              </div>
               
               <div className="inline-flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10 border border-amber-500/30 text-[#D4A853] text-2xl font-bold font-mono uppercase">
                 {name[0] || 'N'}

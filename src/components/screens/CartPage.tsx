@@ -71,7 +71,7 @@ export default function CartPage({
         {cart.length === 0 ? (
           /* Empty Cart State */
           <div className="border border-neutral-800 rounded-3xl p-16 text-center space-y-6 bg-gradient-to-b from-[#141414]/50 to-transparent">
-            <span className="text-6xl select-none leading-none block">🪳💧</span>
+            <ShoppingCart className="h-14 w-14 mx-auto text-amber-500/40 animate-pulse" />
             <div className="space-y-2">
               <h3 className="text-lg font-bold font-mono tracking-wider uppercase text-amber-400">Empty Carapace Basket</h3>
               <p className="text-xs text-neutral-500 max-w-sm mx-auto">You have no t-shirts registered in your active basket. Browse our collection to begin survival layering.</p>

@@ -77,8 +77,13 @@ export default function StaticPages({ currentTab, setTab }: StaticPagesProps) {
         {/* Content Renderers */}
         <div className="bg-[#141414] border border-amber-500/10 rounded-2xl p-6 sm:p-10 shadow-2xl relative overflow-hidden">
           
-          <div className="absolute top-0 right-0 p-8 transform translate-x-12 -translate-y-12 select-none opacity-5 pointer-events-none text-9xl">
-            🪳
+          <div className="absolute top-0 right-0 p-8 transform translate-x-4 -translate-y-4 select-none opacity-[0.03] pointer-events-none h-48 w-48">
+            <img 
+              src="https://i.ibb.co/LhkQwD3z/Gemini-Generated-Image-noyty8noyty8noyt-1-removebg-preview.png" 
+              alt="" 
+              className="h-full w-full object-contain filter invert opacity-50" 
+              referrerPolicy="no-referrer"
+            />
           </div>
 
           {currentTab === 'about' && (

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Heart, ShoppingBag, ShieldCheck, Flame, ChevronRight, Check, AlertCircle, Sparkles, Star, UserCheck } from 'lucide-react';
+import { Heart, ShoppingBag, ShieldCheck, Flame, ChevronRight, Check, AlertCircle, Sparkles, Star, UserCheck, User } from 'lucide-react';
 import { Product, ScreenType, CartItem } from '../../types';
 import { PRODUCTS } from '../../data';
 import ProductCard from '../ProductCard';
@@ -421,8 +421,8 @@ export default function ProductDetailPage({
                     <div key={idx} className="space-y-2 pt-4 first:pt-0">
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
-                          <span className="h-7 w-7 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-xs text-amber-400 font-mono">
-                            🪳
+                          <span className="h-7 w-7 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-xs text-amber-500">
+                            <User className="h-3.5 w-3.5" />
                           </span>
                           <div>
                             <span className="block text-xs font-bold text-white leading-none">{review.author}</span>
