@@ -15,36 +15,41 @@ app.use(express.json());
 
 // Google OAuth 2.0 Auth URL Generation Endpoint
 app.get("/api/auth/google/url", (req, res) => {
-  const host = req.get("host") || "";
-  const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
-  const fallbackOrigin = isLocal ? `http://${host}` : `https://${host}`;
-  const clientOrigin = (req.query.origin as string) || process.env.APP_URL || fallbackOrigin;
-  const redirectUri = `${clientOrigin}/auth/callback`;
+  try {
+    const host = req.get("host") || "";
+    const isLocal = host.includes("localhost") || host.includes("127.0.0.1") || host.includes("0.0.0.0");
+    const fallbackOrigin = isLocal ? `http://${host}` : `https://${host}`;
+    const clientOrigin = (req.query.origin as string) || process.env.APP_URL || fallbackOrigin;
+    const redirectUri = `${clientOrigin}/auth/callback`;
 
-  const clientId = process.env.GOOGLE_CLIENT_ID || "";
-  const clientSecret = process.env.GOOGLE_CLIENT_SECRET || "";
+    const clientId = (process.env.GOOGLE_CLIENT_ID || "").trim();
+    const clientSecret = (process.env.GOOGLE_CLIENT_SECRET || "").trim();
 
-  if (!clientId || !clientSecret) {
-    // Return custom Google Account Chooser Sandbox URL for beautiful live testing when env keys are absent
-    return res.json({ 
-      url: `${clientOrigin}/api/auth/google/sandbox?origin=${encodeURIComponent(clientOrigin)}`,
-      configured: false 
+    if (!clientId || !clientSecret) {
+      // Return custom Google Account Chooser Sandbox URL for beautiful live testing when env keys are absent
+      return res.json({ 
+        url: `${clientOrigin}/api/auth/google/sandbox?origin=${encodeURIComponent(clientOrigin)}`,
+        configured: false 
+      });
+    }
+
+    // Generate Google API Auth endpoint URI coordinates
+    const googleAuthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
+    googleAuthUrl.searchParams.append("client_id", clientId);
+    googleAuthUrl.searchParams.append("redirect_uri", redirectUri);
+    googleAuthUrl.searchParams.append("response_type", "code");
+    googleAuthUrl.searchParams.append("scope", "openid email profile");
+    googleAuthUrl.searchParams.append("access_type", "offline");
+    googleAuthUrl.searchParams.append("prompt", "select_account");
+
+    return res.json({
+      url: googleAuthUrl.toString(),
+      configured: true
     });
+  } catch (error: any) {
+    console.error("❌ Error generating Google auth URL:", error);
+    return res.status(500).send(`Server error generating oauth URL: ${error?.message || error}`);
   }
-
-  // Generate Google API Auth endpoint URI coordinates
-  const googleAuthUrl = new URL("https://accounts.google.com/o/oauth2/v2/auth");
-  googleAuthUrl.searchParams.append("client_id", clientId);
-  googleAuthUrl.searchParams.append("redirect_uri", redirectUri);
-  googleAuthUrl.searchParams.append("response_type", "code");
-  googleAuthUrl.searchParams.append("scope", "openid email profile");
-  googleAuthUrl.searchParams.append("access_type", "offline");
-  googleAuthUrl.searchParams.append("prompt", "select_account");
-
-  return res.json({
-    url: googleAuthUrl.toString(),
-    configured: true
-  });
 });
 
 // Google OAuth 2.0 Login Callback Handler
