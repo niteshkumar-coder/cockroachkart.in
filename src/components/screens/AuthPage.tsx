@@ -116,6 +116,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+    setShowPopupTips(false);
 
     if (!name.trim()) {
       setAuthError("Please disclose your survivor registration name.");
@@ -178,6 +179,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
+    setShowPopupTips(false);
 
     if (!email.trim() || !password.trim()) {
       setAuthError("Please enter your email and password.");
@@ -304,7 +306,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
               <div className="flex border-b border-neutral-900 text-xs font-mono">
                 <button
                   type="button"
-                  onClick={() => { setActiveMode('signin'); setAuthError(''); }}
+                  onClick={() => { setActiveMode('signin'); setAuthError(''); setShowPopupTips(false); }}
                   className={`flex-1 text-center pb-3 uppercase tracking-widest font-black transition-all border-b-2 cursor-pointer ${
                     activeMode === 'signin'
                       ? 'border-amber-500 text-amber-400'
@@ -315,7 +317,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
                 </button>
                 <button
                   type="button"
-                  onClick={() => { setActiveMode('signup'); setAuthError(''); }}
+                  onClick={() => { setActiveMode('signup'); setAuthError(''); setShowPopupTips(false); }}
                   className={`flex-1 text-center pb-3 uppercase tracking-widest font-black transition-all border-b-2 cursor-pointer ${
                     activeMode === 'signup'
                       ? 'border-amber-500 text-amber-400'
@@ -404,7 +406,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
                         type="text"
                         required
                         value={name}
-                        onChange={(e) => setName(e.target.value)}
+                        onChange={(e) => { setName(e.target.value); setAuthError(''); setShowPopupTips(false); }}
                         placeholder="Nitesh Kumar"
                         className="w-full rounded-xl bg-[#1C1C1E] border border-neutral-800 focus:border-amber-500/50 pl-10 pr-3 py-2.5 text-xs text-white focus:outline-none font-mono"
                       />
@@ -422,7 +424,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
                       type="email"
                       required
                       value={email}
-                      onChange={(e) => setEmail(e.target.value)}
+                      onChange={(e) => { setEmail(e.target.value); setAuthError(''); setShowPopupTips(false); }}
                       placeholder="shopper@survivor.com"
                       className="w-full rounded-xl bg-[#1C1C1E] border border-neutral-800 focus:border-amber-500/50 pl-10 pr-3 py-2.5 text-xs text-white focus:outline-none font-mono"
                     />
@@ -439,7 +441,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
                       type="password"
                       required
                       value={password}
-                      onChange={(e) => setPassword(e.target.value)}
+                      onChange={(e) => { setPassword(e.target.value); setAuthError(''); setShowPopupTips(false); }}
                       placeholder="Minimum 6 characters"
                       className="w-full rounded-xl bg-[#1C1C1E] border border-neutral-800 focus:border-amber-500/50 pl-10 pr-3 py-2.5 text-xs text-white focus:outline-none font-mono tracking-widest"
                     />
