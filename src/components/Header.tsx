@@ -28,6 +28,8 @@ export default function Header({
   setSelectedProduct,
   authLoading = false
 }: HeaderProps) {
+  console.log("Navbar User:", currentUser);
+
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
   const [localSearch, setLocalSearch] = useState('');
@@ -248,13 +250,13 @@ export default function Header({
                 title="Dashboard / Account"
                 id="header-user-button"
               >
-                {currentUser.avatarUrl ? (
-                  <img src={currentUser.avatarUrl} alt="Avatar" className="h-5 w-5 rounded-full border border-amber-400/30" referrerPolicy="no-referrer" />
+                {(currentUser.avatarUrl || currentUser.photoURL) ? (
+                  <img src={currentUser.avatarUrl || currentUser.photoURL} alt="Avatar" className="h-5 w-5 rounded-full border border-amber-400/30" referrerPolicy="no-referrer" />
                 ) : (
                   <User className="h-4 w-4" />
                 )}
                 <span className="hidden sm:inline text-xs font-semibold tracking-wide truncate max-w-[90px]">
-                  {currentUser.name ? currentUser.name.split(' ')[0] : 'Survivor'}
+                  {currentUser.name ? currentUser.name.split(' ')[0] : currentUser.displayName ? currentUser.displayName.split(' ')[0] : 'Survivor'}
                 </span>
               </button>
             ) : authLoading ? (
@@ -367,12 +369,12 @@ export default function Header({
                   onClick={() => { setScreen('dashboard'); setMobileMenuOpen(false); }}
                   className="text-left py-2.5 text-amber-400 hover:text-amber-300 font-extrabold flex items-center gap-2 font-mono uppercase tracking-wider text-xs"
                 >
-                  {currentUser.avatarUrl ? (
-                    <img src={currentUser.avatarUrl} alt="Avatar" className="h-5 w-5 rounded-full border border-amber-400/30" referrerPolicy="no-referrer" />
+                  {(currentUser.avatarUrl || currentUser.photoURL) ? (
+                    <img src={currentUser.avatarUrl || currentUser.photoURL} alt="Avatar" className="h-5 w-5 rounded-full border border-amber-400/30" referrerPolicy="no-referrer" />
                   ) : (
                     <div className="h-5 w-5 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-[10px]">🪳</div>
                   )}
-                  My Account: {currentUser.name ? currentUser.name.split(' ')[0] : 'Survivor'}
+                  My Account: {currentUser.name ? currentUser.name.split(' ')[0] : currentUser.displayName ? currentUser.displayName.split(' ')[0] : 'Survivor'}
                 </button>
               ) : (
                 <button

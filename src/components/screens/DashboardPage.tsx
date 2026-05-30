@@ -35,7 +35,7 @@ export default function DashboardPage({
   const [activeSubTab, setActiveSubTab] = useState<'orders' | 'profile' | 'addresses' | 'wishlist'>('orders');
   
   // Profile Form States
-  const [name, setName] = useState(currentUser?.name || '');
+  const [name, setName] = useState(currentUser?.name || currentUser?.displayName || '');
   const [email, setEmail] = useState(currentUser?.email || '');
   const [phone, setPhone] = useState(currentUser?.phone || '');
   const [profileSaving, setProfileSaving] = useState(false);
@@ -44,7 +44,7 @@ export default function DashboardPage({
   // Synchronize state with prop shifts (essential for Google async auth load)
   useEffect(() => {
     if (currentUser) {
-      if (currentUser.name) setName(currentUser.name);
+      setName(currentUser.name || currentUser.displayName || '');
       if (currentUser.email) setEmail(currentUser.email);
       if (currentUser.phone) setPhone(currentUser.phone);
     }

@@ -11,7 +11,7 @@ import DashboardPage from './components/screens/DashboardPage';
 import AuthPage from './components/screens/AuthPage';
 import StaticPages from './components/screens/StaticPages';
 import AdminDashboardPage from './components/screens/AdminDashboardPage';
-import { signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
+import { signOut, onAuthStateChanged, getRedirectResult, setPersistence, browserLocalPersistence } from 'firebase/auth';
 import { collection, doc, setDoc, getDocs, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from './firebase';
 
@@ -128,8 +128,18 @@ export default function App() {
 
   // Listen to Firebase Auth state change for real persistent session tracking
   useEffect(() => {
+    // Verify and enforce browser local persistence
+    setPersistence(auth, browserLocalPersistence)
+      .then(() => console.log("Firebase Auth browserLocalPersistence established successfully."))
+      .catch((err) => console.error("Error setting Firebase Auth persistence:", err));
+
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      console.log("onAuthStateChanged listener triggered. Firebase User:", firebaseUser ? firebaseUser.uid : "null");
+      const user = firebaseUser;
+      console.log("Auth User:", user);
+      console.log("Current User:", auth.currentUser);
+      console.log("Navbar User:", user);
+      console.log("Auth State Changed:", currentUser);
+
       setAuthLoading(true);
       if (firebaseUser) {
         try {
@@ -177,15 +187,9 @@ export default function App() {
           try {
             const parsed = JSON.parse(currentStored);
             if (parsed && parsed.uid) {
-              const isSandboxEnvironment = window.self !== window.top || 
-                window.location.hostname.includes('asia-southeast1.run.app') || 
-                window.location.hostname.includes('webcontainer') || 
-                window.location.hostname.includes('localhost');
-                
-              if (parsed.uid.startsWith('google_sb_') || parsed.uid.startsWith('guest_') || isSandboxEnvironment) {
-                console.log("Preserving sandbox or local mock user session from Firebase Auth null override:", parsed.uid);
-                preserveLocal = true;
-              }
+              console.log("Preserving sandbox or local mock user session from Firebase Auth null override:", parsed.uid);
+              preserveLocal = true;
+              setCurrentUser(parsed);
             }
           } catch (e) {
             // silent ignore
@@ -200,7 +204,7 @@ export default function App() {
       setAuthLoading(false);
     });
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   // Load user-dependent data dynamically on login or transition
   const syncUserData = () => {
