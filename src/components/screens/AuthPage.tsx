@@ -170,6 +170,33 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
     }
   };
 
+  // Direct bypass helper for sandboxed iframes blocking popup / redirect authentication
+  const handleGuestBypass = async () => {
+    setConnecting(true);
+    setAuthError('');
+    const guestUid = `guest_${Math.random().toString(36).substring(2, 9)}`;
+    const guestProfile = {
+      uid: guestUid,
+      name: "Valued Guest",
+      email: "guest.shopper@cockroachkart.com",
+      phone: "9128300000",
+      avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=guest",
+      profileCompleted: true,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    };
+
+    try {
+      await setDoc(doc(db, 'users', guestUid), guestProfile);
+    } catch (err) {
+      console.warn("Could not write Guest Profile to Firestore (will use local session):", err);
+    }
+
+    localStorage.setItem('cockroach_current_user', JSON.stringify(guestProfile));
+    onLoginSuccess(guestProfile);
+    setConnecting(false);
+  };
+
   // 2. Email & Password Register Handler (Direct Client-Side Registration)
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -430,14 +457,42 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
                 </div>
               )}
 
-              {/* Bilingual Notice */}
-              <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3.5 text-[11px] font-mono text-zinc-300 space-y-2">
-                <div className="font-black text-amber-400 uppercase text-[10px] flex items-center gap-1">
-                  <span>💡 SECURE POPUP OAUTH ACTIVATED</span>
+              {/* Bilingual Notice & Sandbox Troubleshooting Fallback */}
+              <div id="auth-troubleshoot-container" className="bg-amber-500/5 border border-amber-500/25 rounded-2xl p-4.5 text-[11px] font-mono text-zinc-300 space-y-3">
+                <div className="font-extrabold text-amber-400 uppercase text-[10px] flex items-center justify-between border-b border-amber-500/10 pb-2">
+                  <span className="flex items-center gap-1.5">⚡ Sandboxed Preview Optimization</span>
+                  <span className="text-[9px] px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-300">Hindi + English</span>
                 </div>
-                <p className="text-[10px] text-zinc-400 leading-relaxed">
-                  This application utilizes modern popup-based Google authentication, fully optimized for sandboxed preview iFrames, mobile browsers, and local development.
-                </p>
+                
+                <div className="space-y-1.5">
+                  <p className="text-[10px] text-zinc-400 leading-relaxed font-semibold">
+                    <span className="text-amber-500">ENG:</span> Google Sign-In popups are often blocked by browsers inside sandboxed preview iframes. If nothing happens when you click "Sign In with Google", please <strong className="text-white">open the app in a new tab</strong> or use the <strong className="text-amber-400">Instant Guest Login</strong> bypass button below.
+                  </p>
+                  <p className="text-[10px] text-zinc-400 leading-relaxed font-semibold">
+                    <span className="text-amber-500">HIN:</span> Browsers preview iframe ke andar Google login window/popups block kar dete hain. Agar Google button click karne par screen blank rahe ya kuch na ho, toh <strong className="text-white">"Open App in New Tab"</strong> button dabayein ya <strong className="text-amber-400">"Instant Guest Bypass"</strong> click karke bina password ke turant log-in karein!
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2 pt-1">
+                  <a 
+                    id="new-tab-helper-link"
+                    href={window.location.href} 
+                    target="_blank" 
+                    rel="noreferrer" 
+                    className="flex items-center justify-center gap-1.5 bg-[#1C1C1E] border border-neutral-700 hover:border-amber-500/40 text-white rounded-xl py-2.5 text-[10px] font-mono font-black uppercase tracking-wider transition-colors active:scale-95 text-center"
+                  >
+                    <ExternalLink className="h-3 w-3 text-amber-500 shrink-0" />
+                    Open in New Tab
+                  </a>
+                  <button
+                    id="instant-guest-bypass-btn"
+                    type="button"
+                    onClick={handleGuestBypass}
+                    className="flex items-center justify-center gap-1 bg-amber-500 hover:bg-amber-600 text-black rounded-xl py-2.5 text-[10px] font-mono font-black uppercase tracking-wider transition-colors active:scale-95 cursor-pointer"
+                  >
+                    ⚡ Instant Guest
+                  </button>
+                </div>
               </div>
 
               {/* SECTION A: GOOGLE SSO (Popup based) */}
