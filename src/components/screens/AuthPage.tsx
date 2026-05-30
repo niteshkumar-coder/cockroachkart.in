@@ -329,17 +329,22 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
                 </div>
               )}
 
-              {/* Troubleshooting Popup Guidance */}
-              {showPopupTips && (
-                <div className="bg-amber-500/5 border border-amber-500/25 rounded-xl p-3.5 text-[11px] font-mono text-zinc-300 space-y-2">
-                  <div className="font-black text-amber-400 uppercase text-[10px]">💡 How to bypass browser popup limits:</div>
-                  <ul className="list-disc pl-4 space-y-1 text-zinc-400 text-[10px]">
-                    <li>Click <strong>"Open in a new tab"</strong> <ExternalLink className="inline h-3 w-3" /> on top right window.</li>
-                    <li>Look at your URL bar's rightmost corner for a <strong>blocked popup icon</strong> and change to "Always allow".</li>
-                    <li>Or, simply input your email and password below to log in directly!</li>
+              {/* Bilingual Troubleshooting & Iframe Guidance */}
+              <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3.5 text-[11px] font-mono text-zinc-300 space-y-2">
+                <div className="font-black text-amber-400 uppercase text-[10px] flex items-center gap-1">
+                  <span>💡 IFRAME MODE NOTICE / महत्वपूर्ण सूचना</span>
+                </div>
+                <p className="text-[10px] text-zinc-400 leading-relaxed">
+                  चूंकि यह ऐप एक सुरक्षित Sandbox iFrame में चल रहा है, Google Login का Pop-Up ब्लॉक हो सकता है।
+                </p>
+                <div className="text-[10px] text-zinc-400 leading-relaxed space-y-1">
+                  <p className="font-bold text-zinc-300">इसे ठीक करने के 2 आसान तरीके:</p>
+                  <ul className="list-disc pl-4 space-y-1">
+                    <li>स्क्रीन के ऊपर-दाएं कोने में <strong>"Open in a new tab"</strong> <ExternalLink className="inline h-2.5 w-2.5 text-amber-500" /> पर क्लिक करें और वहां Google Login का उपयोग करें।</li>
+                    <li>या नीचे दिए गए <strong>Email / Password</strong> सेक्शन का उपयोग करके सीधे अकाउंट बनाएं और Login करें (यह 100% कार्यशील है)।</li>
                   </ul>
                 </div>
-              )}
+              </div>
 
               {/* SECTION A: GOOGLE SSO (Popup based) */}
               <div className="space-y-3">
