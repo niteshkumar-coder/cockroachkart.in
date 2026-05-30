@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, User, Mail, Phone, Check, RefreshCw, Lock, ExternalLink } from 'lucide-react';
 import { ScreenType } from '../../types';
-import { signInWithRedirect, getRedirectResult, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithRedirect, signInWithPopup, getRedirectResult, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from '../../firebase';
 
@@ -95,7 +95,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
     checkRedirect();
   }, [onLoginSuccess]);
 
-  // 1. Google Auth Connection Handler (Direct Client-Side Google SSO via Redirect)
+  // 1. Google Auth Connection Handler (Direct Client-Side Google SSO via Popup & Redirect fallbacks)
   const handleGoogleSignInByRedirect = async () => {
     setAuthError('');
     setConnecting(true);
@@ -103,14 +103,69 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      await signInWithRedirect(auth, provider);
+      
+      const result = await signInWithPopup(auth, provider);
+      if (result && result.user) {
+        const firebaseUser = result.user;
+        
+        try {
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          let completedProfile;
+          if (userDocSnap && userDocSnap.exists()) {
+            completedProfile = userDocSnap.data();
+          } else {
+            completedProfile = {
+              uid: firebaseUser.uid,
+              name: (firebaseUser.displayName || "").trim(),
+              email: (firebaseUser.email || "").trim().toLowerCase(),
+              phone: firebaseUser.phoneNumber || "",
+              avatarUrl: firebaseUser.photoURL || "",
+              profileCompleted: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            await setDoc(userDocRef, completedProfile);
+          }
+
+          localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
+          onLoginSuccess(completedProfile);
+        } catch (firestoreErr: any) {
+          console.warn("Firestore error during Google popup mapping:", firestoreErr);
+          
+          const fallbackProfile = {
+            uid: firebaseUser.uid,
+            name: (firebaseUser.displayName || "").trim(),
+            email: (firebaseUser.email || "").trim().toLowerCase(),
+            phone: firebaseUser.phoneNumber || "",
+            avatarUrl: firebaseUser.photoURL || "",
+            profileCompleted: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
+          onLoginSuccess(fallbackProfile);
+        }
+      }
     } catch (err: any) {
-      setConnecting(false);
-      console.error("Google Auth Redirect Trigger Error:", err);
-      if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
+      console.error("Google sign-in popup error:", err);
+      // Fallback to redirect if popup is blocked by the browser setting
+      if (err.code === 'auth/popup-blocked') {
+        try {
+          const provider = new GoogleAuthProvider();
+          provider.setCustomParameters({ prompt: 'select_account' });
+          await signInWithRedirect(auth, provider);
+        } catch (redirErr: any) {
+          setAuthError("Failed to trigger fallback redirect login: " + (redirErr.message || redirErr));
+          setConnecting(false);
+        }
+      } else if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
         setUnauthorizedDomain(true);
+        setConnecting(false);
       } else {
-        setAuthError(err.message || "Failed to trigger Google Sign-In redirect.");
+        setAuthError(err.message || "Failed to complete Google Sign-In popup flow.");
+        setConnecting(false);
       }
     }
   };
@@ -378,14 +433,14 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
               {/* Bilingual Notice */}
               <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3.5 text-[11px] font-mono text-zinc-300 space-y-2">
                 <div className="font-black text-amber-400 uppercase text-[10px] flex items-center gap-1">
-                  <span>💡 SECURE REDIRECT OAUTH ACTIVATED</span>
+                  <span>💡 SECURE POPUP OAUTH ACTIVATED</span>
                 </div>
                 <p className="text-[10px] text-zinc-400 leading-relaxed">
-                  This application utilizes modern redirect-based Google authentication, fully optimized for sandboxed iFrames, mobile browsers, and secure environments.
+                  This application utilizes modern popup-based Google authentication, fully optimized for sandboxed preview iFrames, mobile browsers, and local development.
                 </p>
               </div>
 
-              {/* SECTION A: GOOGLE SSO (Redirect based) */}
+              {/* SECTION A: GOOGLE SSO (Popup based) */}
               <div className="space-y-3">
                 <button
                   type="button"
