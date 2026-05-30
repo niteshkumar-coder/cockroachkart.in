@@ -30,6 +30,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
 
   // Fallback / Guidance help toggles
   const [showPopupTips, setShowPopupTips] = useState(false);
+  const [unauthorizedDomain, setUnauthorizedDomain] = useState(false);
 
   // Check for Google Sign-In redirect result when AuthPage mounts
   useEffect(() => {
@@ -80,7 +81,11 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
         }
       } catch (err: any) {
         console.error("Google sign-in redirect error:", err);
-        setAuthError(err.message || "Failed to complete Google Sign-In redirect flow.");
+        if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
+          setUnauthorizedDomain(true);
+        } else {
+          setAuthError(err.message || "Failed to complete Google Sign-In redirect flow.");
+        }
       } finally {
         setConnecting(false);
       }
@@ -100,7 +105,11 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
     } catch (err: any) {
       setConnecting(false);
       console.error("Google Auth Redirect Trigger Error:", err);
-      setAuthError(err.message || "Failed to trigger Google Sign-In redirect.");
+      if (err.code === 'auth/unauthorized-domain' || (err.message && err.message.includes('unauthorized-domain'))) {
+        setUnauthorizedDomain(true);
+      } else {
+        setAuthError(err.message || "Failed to trigger Google Sign-In redirect.");
+      }
     }
   };
 
@@ -335,6 +344,29 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
               {authError && (
                 <div className="text-[11px] bg-rose-500/10 border border-rose-500/20 text-rose-400 font-mono rounded-xl p-3.5 text-center leading-relaxed">
                   ⚠️ {authError}
+                </div>
+              )}
+
+              {unauthorizedDomain && (
+                <div className="bg-rose-500/5 border border-rose-500/20 rounded-xl p-3.5 text-[11px] font-mono text-zinc-300 space-y-2.5">
+                  <div className="font-black text-rose-400 uppercase text-[10px] flex items-center gap-1.5">
+                    <span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse"></span>
+                    <span>⚠️ Google Auth Domain Needs Authorization</span>
+                  </div>
+                  <p className="text-[10px] text-zinc-400 leading-relaxed">
+                    This preview domain (<span className="text-amber-400 font-bold">{window.location.hostname}</span>) has not been added to your Firebase project (<span className="text-zinc-300 font-bold">cockroachkart-179dc</span>) Authorized Domains list.
+                  </p>
+                  <div className="bg-[#1C1C1E] border border-neutral-800 rounded-lg p-3 space-y-1.5 text-[10px] text-zinc-400">
+                    <div className="text-[9px] text-zinc-500 uppercase tracking-wider font-bold">How to enable Google login:</div>
+                    <ol className="list-decimal pl-4 space-y-1">
+                      <li>Open <a href="https://console.firebase.google.com/project/cockroachkart-179dc/authentication/settings" target="_blank" rel="noreferrer" className="text-amber-500 underline hover:text-amber-400 inline-flex items-center gap-0.5">Firebase Auth Settings <ExternalLink className="h-2.5 w-2.5 inline" /></a></li>
+                      <li>Go to <strong className="text-zinc-200">Authorized domains</strong> and click <strong className="text-zinc-200">Add domain</strong></li>
+                      <li>Add this exact domain name: <code className="text-amber-400 select-all font-mono font-semibold bg-neutral-900 px-1 py-0.5 rounded ml-0.5">{window.location.hostname}</code></li>
+                    </ol>
+                  </div>
+                  <div className="text-[10px] text-zinc-500 text-center italic mt-1">
+                    💡 Hint: You can use <strong className="text-zinc-400">Email & Password</strong> register/login below instantly without domain setup!
+                  </div>
                 </div>
               )}
 

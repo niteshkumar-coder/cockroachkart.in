@@ -34,6 +34,30 @@
         "updatedAt": { "type": "string" }
       },
       "required": ["id", "userId", "items", "total", "status", "createdAt"]
+    },
+    "Product": {
+      "title": "Product",
+      "description": "Item in the store visual catalog",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "price": { "type": "number" },
+        "originalPrice": { "type": "number" },
+        "rating": { "type": "number" },
+        "reviewCount": { "type": "number" },
+        "category": { "type": "string" },
+        "sizes": { "type": "array" },
+        "colors": { "type": "array" },
+        "images": { "type": "array" },
+        "tag": { "type": "string" },
+        "description": { "type": "string" },
+        "specs": { "type": "array" },
+        "material": { "type": "string" },
+        "fit": { "type": "string" },
+        "care": { "type": "string" }
+      },
+      "required": ["id", "name", "price", "category", "images"]
     }
   },
   "firestore": {
@@ -44,6 +68,10 @@
     "users/{userId}/orders/{orderId}": {
       "schema": "Order",
       "description": "Purchased merchandise orders ledger details"
+    },
+    "products/{productId}": {
+      "schema": "Product",
+      "description": "Dynamic store web product details"
     }
   }
 }

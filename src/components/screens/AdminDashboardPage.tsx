@@ -5,6 +5,9 @@ import {
   RotateCcw, DollarSign, Star, FileText, Image, RefreshCw, X, Eye
 } from 'lucide-react';
 import { Product, Order, SavedAddress } from '../../types';
+import { collection, collectionGroup, onSnapshot, query, doc, setDoc, deleteDoc } from 'firebase/firestore';
+import { db, auth, handleFirestoreError, OperationType } from '../../firebase';
+import { PRODUCTS } from '../../data';
 
 interface AdminDashboardPageProps {
   products: Product[];
@@ -59,57 +62,29 @@ export default function AdminDashboardPage({
 
   const [formSuccess, setFormSuccess] = useState(false);
 
-  // Load and Aggregate all placement orders from device local storages
-  const loadAllOrders = () => {
-    const aggregatedOrders: Order[] = [];
-    const keysToFind: { [key: string]: string } = {};
-
-    // Scan all localStorage items for order registries
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('cockroach_orders_')) {
-        try {
-          const userOrders = JSON.parse(localStorage.getItem(key) || '[]');
-          if (Array.isArray(userOrders)) {
-            userOrders.forEach((o: Order) => {
-              // Add key reference to locate this order's user owner later for status syncs
-              const ownerEmail = key.replace('cockroach_orders_', '').trim();
-              keysToFind[o.id] = ownerEmail;
-              aggregatedOrders.push(o);
-            });
-          }
-        } catch (e) {
-          console.error('Error parsing orders for key:', key, e);
-        }
-      }
-    }
-
-    // Sort by order date descending (newest first)
-    const sorted = aggregatedOrders.sort((a, b) => {
-      const dateA = a.date ? new Date(a.date).getTime() : 0;
-      const dateB = b.date ? new Date(b.date).getTime() : 0;
-      return dateB - dateA;
-    });
-
-    setOrders(sorted);
-    return { sorted, keysToFind };
-  };
-
+  // Stream all placement orders from Firestore collection group in real time!
   useEffect(() => {
     if (isAuthenticated) {
-      loadAllOrders();
+      const ordersQuery = query(collectionGroup(db, 'orders'));
+      const unsubscribe = onSnapshot(ordersQuery, (snapshot) => {
+        const aggregatedOrders: Order[] = [];
+        snapshot.forEach((docSnap) => {
+          aggregatedOrders.push(docSnap.data() as Order);
+        });
 
-      const handleGlobalSync = () => {
-        loadAllOrders();
-      };
+        // Sort by order date descending (newest first)
+        const sorted = aggregatedOrders.sort((a, b) => {
+          const dateA = a.date ? new Date(a.date).getTime() : 0;
+          const dateB = b.date ? new Date(b.date).getTime() : 0;
+          return dateB - dateA;
+        });
 
-      window.addEventListener('storage', handleGlobalSync);
-      window.addEventListener('cockroach_db_sync', handleGlobalSync);
+        setOrders(sorted);
+      }, (err) => {
+        console.error("Admin failed to stream collection group orders:", err);
+      });
 
-      return () => {
-        window.removeEventListener('storage', handleGlobalSync);
-        window.removeEventListener('cockroach_db_sync', handleGlobalSync);
-      };
+      return () => unsubscribe();
     }
   }, [isAuthenticated]);
 
@@ -124,64 +99,69 @@ export default function AdminDashboardPage({
     }
   };
 
-  // Change order status live and save back to user-specific localStorage key
-  const handleUpdateOrderStatus = (orderId: string, nextStatus: 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled') => {
-    // 1. Locate the owner user storage key
-    let ownerEmailKey = '';
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith('cockroach_orders_')) {
-        try {
-          const parsed = JSON.parse(localStorage.getItem(key) || '[]');
-          if (Array.isArray(parsed) && parsed.some((o: Order) => o.id === orderId)) {
-            ownerEmailKey = key;
-            break;
-          }
-        } catch (e) {}
-      }
+  // Change order status live in Firestore
+  const handleUpdateOrderStatus = async (orderId: string, nextStatus: 'Processing' | 'Shipped' | 'Delivered' | 'Cancelled') => {
+    const targetOrder = orders.find(o => o.id === orderId);
+    if (!targetOrder) {
+      console.error("Order not found with ID:", orderId);
+      return;
     }
 
-    if (ownerEmailKey) {
-      try {
-        const userOrders: Order[] = JSON.parse(localStorage.getItem(ownerEmailKey) || '[]');
-        const updated = userOrders.map((o: Order) => {
-          if (o.id === orderId) {
-            return { ...o, status: nextStatus };
-          }
-          return o;
-        });
-        localStorage.setItem(ownerEmailKey, JSON.stringify(updated));
-        
-        // Dispatch event for same-tab reactive update across components/pages
-        window.dispatchEvent(new Event('cockroach_db_sync'));
+    const userId = targetOrder.userId;
+    if (!userId) {
+      console.error("No valid userId associated with order:", orderId);
+      alert("Error: Associated customer UID is missing for live synchronization.");
+      return;
+    }
 
-        // Refresh local admin list instantly
-        loadAllOrders();
-        
-        // Sync detail modal if active
-        if (selectedOrderDetail && selectedOrderDetail.id === orderId) {
-          setSelectedOrderDetail({ ...selectedOrderDetail, status: nextStatus });
-        }
-      } catch (err) {
-        console.error('Failed to update live user order status', err);
+    try {
+      const orderRef = doc(db, 'users', userId, 'orders', orderId);
+      await setDoc(orderRef, { 
+        status: nextStatus,
+        updatedAt: new Date().toISOString() 
+      }, { merge: true });
+
+      // Sync detail modal if active
+      if (selectedOrderDetail && selectedOrderDetail.id === orderId) {
+        setSelectedOrderDetail({ ...selectedOrderDetail, status: nextStatus });
       }
+    } catch (err) {
+      console.error('Failed to update live user order status in Firestore', err);
+      alert('Failed to update status: Insufficient authorization or Firebase error.');
     }
   };
 
-  // Delete product live from the catalogue
-  const handleDeleteProduct = (prodId: string) => {
+  // Delete product live from the catalogue in Firestore
+  const handleDeleteProduct = async (prodId: string) => {
     const confirmation = window.confirm(`Confirm terminal removal of product ID: ${prodId}?`);
     if (confirmation) {
-      const filtered = products.filter(p => p.id !== prodId);
-      setProducts(filtered);
-      localStorage.setItem('cockroach_products', JSON.stringify(filtered));
-      // Dispatch event for same-tab reactive update across components/pages
-      window.dispatchEvent(new Event('cockroach_db_sync'));
+      try {
+        const productRef = doc(db, 'products', prodId);
+        await deleteDoc(productRef);
+      } catch (err) {
+        console.error("Failed to delete product from Firestore:", err);
+        alert("Failed to delete product: Insufficient authorization or Firebase error.");
+      }
     }
   };
 
-  // Publish a brand new product live!
-  const handleAddProduct = (e: React.FormEvent) => {
+  // Seed default static catalog to Firestore
+  const handleSeedCatalog = async () => {
+    const confirmation = window.confirm("Bootloader: Seed default products catalog to Firestore? This will overwrite or populate all 14 heavy-duty streetwear entries.");
+    if (!confirmation) return;
+    try {
+      for (const p of PRODUCTS) {
+        await setDoc(doc(db, 'products', p.id), p);
+      }
+      alert("System database populated successfully with original product lineup.");
+    } catch (err) {
+      console.error("Failed to seed product collections:", err);
+      alert("Bootloader failed: Insufficient authorization or database error.");
+    }
+  };
+
+  // Publish a brand new product live to Firestore!
+  const handleAddProduct = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newProdName.trim() || !newProdDescription.trim()) {
       alert('Specify a product title and description parameters.');
@@ -208,17 +188,19 @@ export default function AdminDashboardPage({
       care: newProdCare
     };
 
-    const updatedList = [freshProduct, ...products];
-    setProducts(updatedList);
-    localStorage.setItem('cockroach_products', JSON.stringify(updatedList));
-    // Dispatch event for same-tab reactive update across components/pages
-    window.dispatchEvent(new Event('cockroach_db_sync'));
+    try {
+      const productRef = doc(db, 'products', nextId);
+      await setDoc(productRef, freshProduct);
 
-    // Clear form fields
-    setNewProdName('');
-    setNewProdDescription('');
-    setFormSuccess(true);
-    setTimeout(() => setFormSuccess(false), 3000);
+      // Clear form fields
+      setNewProdName('');
+      setNewProdDescription('');
+      setFormSuccess(true);
+      setTimeout(() => setFormSuccess(false), 3000);
+    } catch (err) {
+      console.error("Failed to add product to Firestore:", err);
+      alert("Failed to insert product: Insufficient authorization or database error.");
+    }
   };
 
   // Helper toggle item sizes
@@ -322,14 +304,24 @@ export default function AdminDashboardPage({
 
             {/* Quick Actions */}
             <div className="flex items-center gap-2">
-              <button
-                onClick={() => { loadAllOrders(); alert('Dispatched order databases scanned successfully.'); }}
-                className="bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 h-10 px-4 rounded-xl text-xs font-mono flex items-center gap-2 cursor-pointer transition-colors"
-                title="Refresh index list"
+              {products.length === 0 && (
+                <button
+                  onClick={handleSeedCatalog}
+                  className="bg-amber-500/15 hover:bg-amber-500/30 text-amber-400 border border-amber-500/30 h-10 px-4 rounded-xl text-xs font-mono flex items-center gap-2 cursor-pointer transition-colors animate-pulse"
+                  title="Seed products from default data to Firestore"
+                >
+                  <Plus className="h-3.5 w-3.5 text-amber-400" />
+                  <span>Seed Default Catalog</span>
+                </button>
+              )}
+              
+              <div
+                className="bg-[#121316] border border-neutral-800 text-zinc-400 h-10 px-4 rounded-xl text-xs font-mono flex items-center gap-2 select-none"
+                title="Firebase real-time synchronization is live and listening"
               >
-                <RefreshCw className="h-3.5 w-3.5 text-amber-500" />
-                <span>Sync Indexes</span>
-              </button>
+                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Firestore Live Active</span>
+              </div>
               
               <button
                 onClick={() => {

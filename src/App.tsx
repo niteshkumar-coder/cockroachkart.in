@@ -11,7 +11,7 @@ import AuthPage from './components/screens/AuthPage';
 import StaticPages from './components/screens/StaticPages';
 import AdminDashboardPage from './components/screens/AdminDashboardPage';
 import { signOut, onAuthStateChanged } from 'firebase/auth';
-import { collection, doc, setDoc, getDocs, getDoc } from 'firebase/firestore';
+import { collection, doc, setDoc, getDocs, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from './firebase';
 
 import { 
@@ -186,53 +186,71 @@ export default function App() {
     }
   };
 
+  // 1. Real-time products sync in Firestore
   useEffect(() => {
-    syncUserData();
-
-    // Async Firestore Fetch for Orders and profile if authenticated via Firebase
-    const fetchFirestoreData = async () => {
-      if (currentUser && currentUser.uid) {
-        try {
-          const ordersRef = collection(db, 'users', currentUser.uid, 'orders');
-          const querySnap = await getDocs(ordersRef);
-          const firebaseOrders: Order[] = [];
-          querySnap.forEach((docSnap) => {
-            firebaseOrders.push(docSnap.data() as Order);
-          });
-          
-          // Sort orders by date descending (most recent first)
-          firebaseOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-          
-          if (firebaseOrders.length > 0) {
-            setOrders(firebaseOrders);
-            const emailKey = currentUser.email.toLowerCase().trim();
-            localStorage.setItem(`cockroach_orders_${emailKey}`, JSON.stringify(firebaseOrders));
-          }
-        } catch (err) {
-          console.error("Failed to load user orders from Firestore:", err);
-        }
+    const productsRef = collection(db, 'products');
+    const unsubscribe = onSnapshot(productsRef, (snapshot) => {
+      if (snapshot.empty) {
+        console.log("Firestore products collection is empty. Falling back to default static local catalog.");
+        setProducts(PRODUCTS);
+      } else {
+        const liveProds: Product[] = [];
+        snapshot.forEach((docSnap) => {
+          liveProds.push(docSnap.data() as Product);
+        });
+        setProducts(liveProds);
+        localStorage.setItem('cockroach_products', JSON.stringify(liveProds));
       }
-    };
-
-    fetchFirestoreData();
-  }, [currentUser]);
-
-  // Hook up real-time cross-tab and same-tab synchronization listeners
-  useEffect(() => {
-    const handleGlobalDataSync = () => {
-      // 1. Refresh products list instantly
-      const storedProducts = localStorage.getItem('cockroach_products');
-      if (storedProducts) {
-        try {
-          setProducts(JSON.parse(storedProducts));
-        } catch (e) {
-          setProducts(PRODUCTS);
-        }
+    }, (error) => {
+      console.error("Firestore error streaming products catalog, fallback to local storage:", error);
+      const stored = localStorage.getItem('cockroach_products');
+      if (stored) {
+        try { setProducts(JSON.parse(stored)); } catch (e) { setProducts(PRODUCTS); }
       } else {
         setProducts(PRODUCTS);
       }
+    });
 
-      // 2. Refresh user-dependent data like orders, address, wishlist
+    return () => unsubscribe();
+  }, []);
+
+  // 2. Real-time orders sync in Firestore for the current authenticated user
+  useEffect(() => {
+    syncUserData();
+
+    if (currentUser && currentUser.uid) {
+      if (!auth.currentUser || auth.currentUser.uid !== currentUser.uid) {
+        console.log("Postponing Firestore orders load until authenticated Firebase session resolves.");
+        return;
+      }
+      
+      const ordersRef = collection(db, 'users', currentUser.uid, 'orders');
+      const unsubscribe = onSnapshot(ordersRef, (snapshot) => {
+        const firebaseOrders: Order[] = [];
+        snapshot.forEach((docSnap) => {
+          firebaseOrders.push(docSnap.data() as Order);
+        });
+        
+        // Sort orders by date descending (most recent first)
+        firebaseOrders.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        
+        setOrders(firebaseOrders);
+        const emailKey = currentUser.email.toLowerCase().trim();
+        localStorage.setItem(`cockroach_orders_${emailKey}`, JSON.stringify(firebaseOrders));
+      }, (err) => {
+        console.error("Failed to stream user orders from Firestore:", err);
+        handleFirestoreError(err, OperationType.LIST, `users/${currentUser.uid}/orders`);
+      });
+
+      return () => unsubscribe();
+    } else {
+      setOrders([]);
+    }
+  }, [currentUser]);
+
+  // Hook up real-time cross-tab same-tab storage synchronization listeners
+  useEffect(() => {
+    const handleGlobalDataSync = () => {
       syncUserData();
     };
 
