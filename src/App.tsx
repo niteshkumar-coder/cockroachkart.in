@@ -128,25 +128,29 @@ export default function App() {
 
   // Listen to Firebase Auth state change for real persistent session tracking
   useEffect(() => {
-    // Verify and enforce browser local persistence
+    console.log("[Auth Mount]: App mounted, registering onAuthStateChanged listener.");
+    console.log("[Auth Mount]: Initial currentUser state:", currentUser);
+    console.log("[Auth Mount]: Initial localStorage user:", localStorage.getItem('cockroach_current_user'));
+
+    // Verify and enforce browser local persistence once on mount
     setPersistence(auth, browserLocalPersistence)
-      .then(() => console.log("Firebase Auth browserLocalPersistence established successfully."))
-      .catch((err) => console.error("Error setting Firebase Auth persistence:", err));
+      .then(() => console.log("[Auth Mount]: Firebase Auth browserLocalPersistence established successfully."))
+      .catch((err) => console.error("[Auth Mount]: Error setting Firebase Auth persistence:", err));
 
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
-      const user = firebaseUser;
-      console.log("Auth User:", user);
-      console.log("Current User:", auth.currentUser);
-      console.log("Navbar User:", user);
-      console.log("Auth State Changed:", currentUser);
-
+      console.log("[onAuthStateChanged]: Triggered. firebaseUser:", firebaseUser ? `${firebaseUser.uid} (${firebaseUser.email})` : "null");
+      console.log("[onAuthStateChanged]: auth.currentUser is:", auth.currentUser ? auth.currentUser.uid : "null");
+      
       setAuthLoading(true);
       if (firebaseUser) {
         try {
           const userDocRef = doc(db, 'users', firebaseUser.uid);
+          console.log("[onAuthStateChanged]: Fetching Firestore user document: users/" + firebaseUser.uid);
           const userSnap = await getDoc(userDocRef);
+          
           if (userSnap.exists()) {
             const profile = userSnap.data();
+            console.log("[onAuthStateChanged]: User document exists in Firestore. Profile:", profile);
             setCurrentUser(profile);
             localStorage.setItem('cockroach_current_user', JSON.stringify(profile));
           } else {
@@ -161,11 +165,12 @@ export default function App() {
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
+            console.log("[onAuthStateChanged]: User document does not exist in Firestore. Creating fallback profile:", fallbackProfile);
             setCurrentUser(fallbackProfile);
             localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
           }
         } catch (err) {
-          console.error("Error retrieving user document on auth state change:", err);
+          console.error("[onAuthStateChanged]: Error retrieving user document on auth state change:", err);
           const fallbackProfile = {
             uid: firebaseUser.uid,
             name: (firebaseUser.displayName || "").trim(),
@@ -176,6 +181,7 @@ export default function App() {
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
+          console.log("[onAuthStateChanged]: Setting error fallback profile:", fallbackProfile);
           setCurrentUser(fallbackProfile);
           localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
         }
@@ -183,28 +189,33 @@ export default function App() {
         // Safe-guard mock/guest login and sandboxed iframe environments from null resets
         const currentStored = localStorage.getItem('cockroach_current_user');
         let preserveLocal = false;
+        
         if (currentStored) {
           try {
             const parsed = JSON.parse(currentStored);
             if (parsed && parsed.uid) {
-              console.log("Preserving sandbox or local mock user session from Firebase Auth null override:", parsed.uid);
+              console.log("[onAuthStateChanged]: No active Firebase user, but preserving cached mock/guest user session:", parsed.uid);
               preserveLocal = true;
               setCurrentUser(parsed);
             }
           } catch (e) {
-            // silent ignore
+            console.error("[onAuthStateChanged]: Error parsing cockroach_current_user from localStorage:", e);
           }
         }
 
         if (!preserveLocal) {
+          console.log("[onAuthStateChanged]: No user found. Clearing state and local storage.");
           setCurrentUser(null);
           localStorage.removeItem('cockroach_current_user');
         }
       }
       setAuthLoading(false);
     });
-    return () => unsubscribe();
-  }, [currentUser]);
+    return () => {
+      console.log("[Auth Cleanup]: Unsubscribing onAuthStateChanged listener.");
+      unsubscribe();
+    };
+  }, []);
 
   // Load user-dependent data dynamically on login or transition
   const syncUserData = () => {
