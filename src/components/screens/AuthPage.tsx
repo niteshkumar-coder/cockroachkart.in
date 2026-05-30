@@ -1,8 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { ShieldCheck, User, Mail, Phone, Check, RefreshCw, Lock, ExternalLink } from 'lucide-react';
 import { ScreenType } from '../../types';
-import { signInWithPopup, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
+import { signInWithRedirect, getRedirectResult, GoogleAuthProvider, createUserWithEmailAndPassword, signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from '../../firebase';
 
@@ -31,67 +31,76 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
   // Fallback / Guidance help toggles
   const [showPopupTips, setShowPopupTips] = useState(false);
 
-  // 1. Google Auth Connection Handler (Direct Client-Side Google SSO)
-  const handleGoogleSignInByPopup = async () => {
+  // Check for Google Sign-In redirect result when AuthPage mounts
+  useEffect(() => {
+    const checkRedirect = async () => {
+      try {
+        setConnecting(true);
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          const firebaseUser = result.user;
+          // Check if profile exists in Firestore, otherwise write a new record
+          try {
+            const userDocRef = doc(db, 'users', firebaseUser.uid);
+            const userDocSnap = await getDoc(userDocRef);
+            
+            let completedProfile;
+            if (userDocSnap && userDocSnap.exists()) {
+              completedProfile = userDocSnap.data();
+            } else {
+              completedProfile = {
+                uid: firebaseUser.uid,
+                name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
+                email: (firebaseUser.email || "").trim().toLowerCase(),
+                phone: firebaseUser.phoneNumber || "Google Verified",
+                avatarUrl: firebaseUser.photoURL || "",
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+              };
+              await setDoc(userDocRef, completedProfile);
+            }
+
+            localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
+            onLoginSuccess(completedProfile);
+          } catch (firestoreErr: any) {
+            console.warn("Firestore error during Google redirect mapping. Falling back to local SSO:", firestoreErr);
+            
+            const fallbackProfile = {
+              uid: firebaseUser.uid,
+              name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
+              email: (firebaseUser.email || "").trim().toLowerCase(),
+              phone: "Google Verified",
+              avatarUrl: firebaseUser.photoURL || "",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
+            onLoginSuccess(fallbackProfile);
+          }
+        }
+      } catch (err: any) {
+        console.error("Google sign-in redirect error:", err);
+        setAuthError(err.message || "Failed to complete Google Sign-In redirect flow.");
+      } finally {
+        setConnecting(false);
+      }
+    };
+    checkRedirect();
+  }, [onLoginSuccess]);
+
+  // 1. Google Auth Connection Handler (Direct Client-Side Google SSO via Redirect)
+  const handleGoogleSignInByRedirect = async () => {
     setAuthError('');
     setConnecting(true);
-    setShowPopupTips(false);
 
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
-      const result = await signInWithPopup(auth, provider);
-      const firebaseUser = result.user;
-
-      // Check if profile exists in Firestore, otherwise write a new record
-      try {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDocSnap = await getDoc(userDocRef);
-        
-        let completedProfile;
-        if (userDocSnap && userDocSnap.exists()) {
-          completedProfile = userDocSnap.data();
-        } else {
-          completedProfile = {
-            uid: firebaseUser.uid,
-            name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
-            email: (firebaseUser.email || "").trim().toLowerCase(),
-            phone: firebaseUser.phoneNumber || "Google Verified",
-            avatarUrl: firebaseUser.photoURL || "",
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString()
-          };
-          await setDoc(userDocRef, completedProfile);
-        }
-
-        localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
-        onLoginSuccess(completedProfile);
-      } catch (firestoreErr: any) {
-        console.warn("Firestore error during Google auth login mapping. Falling back to local SSO:", firestoreErr);
-        
-        const fallbackProfile = {
-          uid: firebaseUser.uid,
-          name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
-          email: (firebaseUser.email || "").trim().toLowerCase(),
-          phone: "Google Verified",
-          avatarUrl: firebaseUser.photoURL || "",
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString()
-        };
-        localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
-        onLoginSuccess(fallbackProfile);
-      }
+      await signInWithRedirect(auth, provider);
     } catch (err: any) {
       setConnecting(false);
-      console.error("Google Authentication Error:", err);
-      if (err.code === 'auth/popup-blocked') {
-        setShowPopupTips(true);
-        setAuthError("Popup blocked by browser. Please look at your URL bar's right corner or click 'Open in a new tab' at top-right of your screen.");
-      } else if (err.code === 'auth/cancelled-popup-request') {
-        setAuthError("The sign-in popup was closed before completion.");
-      } else {
-        setAuthError(err.message || "Failed to authenticate with Google.");
-      }
+      console.error("Google Auth Redirect Trigger Error:", err);
+      setAuthError(err.message || "Failed to trigger Google Sign-In redirect.");
     }
   };
 
@@ -329,29 +338,22 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
                 </div>
               )}
 
-              {/* Bilingual Troubleshooting & Iframe Guidance */}
+              {/* Bilingual Notice */}
               <div className="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3.5 text-[11px] font-mono text-zinc-300 space-y-2">
                 <div className="font-black text-amber-400 uppercase text-[10px] flex items-center gap-1">
-                  <span>💡 IFRAME MODE NOTICE / महत्वपूर्ण सूचना</span>
+                  <span>💡 SECURE REDIRECT OAUTH ACTIVATED</span>
                 </div>
                 <p className="text-[10px] text-zinc-400 leading-relaxed">
-                  चूंकि यह ऐप एक सुरक्षित Sandbox iFrame में चल रहा है, Google Login का Pop-Up ब्लॉक हो सकता है।
+                  This application utilizes modern redirect-based Google authentication, fully optimized for sandboxed iFrames, mobile browsers, and secure environments.
                 </p>
-                <div className="text-[10px] text-zinc-400 leading-relaxed space-y-1">
-                  <p className="font-bold text-zinc-300">इसे ठीक करने के 2 आसान तरीके:</p>
-                  <ul className="list-disc pl-4 space-y-1">
-                    <li>स्क्रीन के ऊपर-दाएं कोने में <strong>"Open in a new tab"</strong> <ExternalLink className="inline h-2.5 w-2.5 text-amber-500" /> पर क्लिक करें और वहां Google Login का उपयोग करें।</li>
-                    <li>या नीचे दिए गए <strong>Email / Password</strong> सेक्शन का उपयोग करके सीधे अकाउंट बनाएं और Login करें (यह 100% कार्यशील है)।</li>
-                  </ul>
-                </div>
               </div>
 
-              {/* SECTION A: GOOGLE SSO (Popup based) */}
+              {/* SECTION A: GOOGLE SSO (Redirect based) */}
               <div className="space-y-3">
                 <button
                   type="button"
                   disabled={connecting}
-                  onClick={handleGoogleSignInByPopup}
+                  onClick={handleGoogleSignInByRedirect}
                   className="w-full flex items-center justify-center gap-3 border border-neutral-800 bg-[#1E1E20] hover:bg-[#252528] rounded-xl py-3 text-xs font-mono font-black text-white hover:border-amber-500/40 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.99] shadow-lg hover:shadow-amber-500/5 uppercase tracking-widest"
                 >
                   {connecting ? (
