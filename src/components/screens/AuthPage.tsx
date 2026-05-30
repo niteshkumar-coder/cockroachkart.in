@@ -51,10 +51,11 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
             } else {
               completedProfile = {
                 uid: firebaseUser.uid,
-                name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
+                name: (firebaseUser.displayName || "").trim(),
                 email: (firebaseUser.email || "").trim().toLowerCase(),
-                phone: firebaseUser.phoneNumber || "Google Verified",
+                phone: firebaseUser.phoneNumber || "",
                 avatarUrl: firebaseUser.photoURL || "",
+                profileCompleted: false,
                 createdAt: new Date().toISOString(),
                 updatedAt: new Date().toISOString()
               };
@@ -68,10 +69,11 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
             
             const fallbackProfile = {
               uid: firebaseUser.uid,
-              name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
+              name: (firebaseUser.displayName || "").trim(),
               email: (firebaseUser.email || "").trim().toLowerCase(),
-              phone: "Google Verified",
+              phone: firebaseUser.phoneNumber || "",
               avatarUrl: firebaseUser.photoURL || "",
+              profileCompleted: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
@@ -145,8 +147,9 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
         uid: firebaseUser.uid,
         name: name.trim(),
         email: email.trim().toLowerCase(),
-        phone: phone.trim() || "Guest Handset",
+        phone: phone.trim() || "",
         avatarUrl: "",
+        profileCompleted: true,
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString()
       };
@@ -208,10 +211,11 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
       } else {
         const completedProfile = {
           uid: firebaseUser.uid,
-          name: firebaseUser.email?.split('@')[0] || "Shopper Core",
+          name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core",
           email: firebaseUser.email?.toLowerCase().trim() || '',
-          phone: "Guest Handset",
-          avatarUrl: "",
+          phone: firebaseUser.phoneNumber || "",
+          avatarUrl: firebaseUser.photoURL || "",
+          profileCompleted: false,
           createdAt: new Date().toISOString(),
           updatedAt: new Date().toISOString()
         };
@@ -263,8 +267,9 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
       uid: tempGoogleUser.uid,
       name: name.trim(),
       email: tempGoogleUser.email.trim().toLowerCase(),
-      phone: phone.trim() || tempGoogleUser.phone || "Guest Handset",
+      phone: phone.trim() || tempGoogleUser.phone || "",
       avatarUrl: tempGoogleUser.avatarUrl || "",
+      profileCompleted: true,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString()
     };

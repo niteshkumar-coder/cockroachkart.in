@@ -10,6 +10,7 @@
         "email": { "type": "string" },
         "phone": { "type": "string" },
         "avatarUrl": { "type": "string" },
+        "profileCompleted": { "type": "boolean" },
         "createdAt": { "type": "string" },
         "updatedAt": { "type": "string" }
       },

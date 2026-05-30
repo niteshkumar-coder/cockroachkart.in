@@ -3,6 +3,7 @@ import Header from './components/Header';
 import Footer from './components/Footer';
 import Homepage from './components/screens/Homepage';
 import ShopPage from './components/screens/ShopPage';
+import CompleteProfilePopup from './components/CompleteProfilePopup';
 import ProductDetailPage from './components/screens/ProductDetailPage';
 import CartPage from './components/screens/CartPage';
 import CheckoutFlow from './components/screens/CheckoutFlow';
@@ -51,6 +52,17 @@ export default function App() {
     return null;
   });
 
+  // Profile completion overlays
+  const [showProfileCompletePopup, setShowProfileCompletePopup] = useState(false);
+
+  useEffect(() => {
+    if (currentUser && currentUser.profileCompleted === false) {
+      setShowProfileCompletePopup(true);
+    } else {
+      setShowProfileCompletePopup(false);
+    }
+  }, [currentUser]);
+
   const [couponApplied, setCouponApplied] = useState(false);
   const [latestPlacedOrder, setLatestPlacedOrder] = useState<Order | null>(null);
 
@@ -88,10 +100,11 @@ export default function App() {
             // Fallback profile if user document does not exist yet (e.g. newly authenticated Google SSO)
             const fallbackProfile = {
               uid: firebaseUser.uid,
-              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core",
-              email: firebaseUser.email || "",
-              phone: firebaseUser.phoneNumber || "Google Verified",
+              name: (firebaseUser.displayName || "").trim(),
+              email: (firebaseUser.email || "").trim(),
+              phone: firebaseUser.phoneNumber || "",
               avatarUrl: firebaseUser.photoURL || "",
+              profileCompleted: false,
               createdAt: new Date().toISOString(),
               updatedAt: new Date().toISOString()
             };
@@ -102,10 +115,11 @@ export default function App() {
           console.error("Error retrieving user document on auth state change:", err);
           const fallbackProfile = {
             uid: firebaseUser.uid,
-            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core",
-            email: firebaseUser.email || "",
-            phone: firebaseUser.phoneNumber || "Google Verified",
+            name: (firebaseUser.displayName || "").trim(),
+            email: (firebaseUser.email || "").trim(),
+            phone: firebaseUser.phoneNumber || "",
             avatarUrl: firebaseUser.photoURL || "",
+            profileCompleted: false,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
           };
@@ -440,6 +454,46 @@ export default function App() {
     setCurrentScreen('home');
   };
 
+  const handleCompleteProfilePopupSubmit = async (nameVal: string, phoneVal: string) => {
+    if (!currentUser || !currentUser.uid) return;
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      const updatedProfile = {
+        ...currentUser,
+        name: nameVal.trim(),
+        phone: phoneVal.trim(),
+        profileCompleted: true,
+        updatedAt: new Date().toISOString()
+      };
+      await setDoc(userRef, updatedProfile, { merge: true });
+      setCurrentUser(updatedProfile);
+      localStorage.setItem('cockroach_current_user', JSON.stringify(updatedProfile));
+      setShowProfileCompletePopup(false);
+      setCurrentScreen('dashboard');
+    } catch (err: any) {
+      console.error("Failed to complete profile registration in Firestore:", err);
+      throw err;
+    }
+  };
+
+  const handleUpdateProfileInFirestore = async (updatedFields: any) => {
+    if (!currentUser || !currentUser.uid) return;
+    try {
+      const userRef = doc(db, 'users', currentUser.uid);
+      const newProfile = {
+        ...currentUser,
+        ...updatedFields,
+        updatedAt: new Date().toISOString()
+      };
+      await setDoc(userRef, newProfile, { merge: true });
+      setCurrentUser(newProfile);
+      localStorage.setItem('cockroach_current_user', JSON.stringify(newProfile));
+    } catch (err: any) {
+      console.error("Failed to update user profile in Firestore:", err);
+      alert("Failed to save profile changes to remote database.");
+    }
+  };
+
   // Redirection guard: if a guest tries to view dashboard or checkout, guide them to authenticate
   useEffect(() => {
     if (!currentUser && (currentScreen === 'address' || currentScreen === 'payment' || currentScreen === 'dashboard')) {
@@ -538,7 +592,7 @@ export default function App() {
             onCancelOrder={handleCancelOrder}
             onReorder={handleReorder}
             currentUser={currentUser}
-            onUpdateUser={setCurrentUser}
+            onUpdateUser={handleUpdateProfileInFirestore}
             addresses={addresses}
             onRemoveAddress={handleRemoveAddress}
             wishlist={wishlist}
@@ -576,6 +630,15 @@ export default function App() {
         setScreen={setCurrentScreen} 
         setStaticTab={setCurrentStaticTab} 
       />
+
+      {/* Complete Profile Popup modal for new accounts */}
+      {showProfileCompletePopup && (
+        <CompleteProfilePopup
+          currentUser={currentUser}
+          onSubmit={handleCompleteProfilePopupSubmit}
+          onLogout={handleLogout}
+        />
+      )}
       
     </div>
   );
