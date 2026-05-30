@@ -42,7 +42,8 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
       const response = await fetch(`/api/auth/google/url?origin=${encodeURIComponent(origin)}`);
       
       if (!response.ok) {
-        throw new Error("Could not retrieve authorization credentials from the backend server.");
+        const errorText = await response.text().catch(() => "No extra error body");
+        throw new Error(`Could not retrieve authorization credentials from the backend server. Status: ${response.status} (${response.statusText}). Error: ${errorText}`);
       }
       
       const data = await response.json();
