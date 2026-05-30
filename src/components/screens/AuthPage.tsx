@@ -31,142 +31,71 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
   // Fallback / Guidance help toggles
   const [showPopupTips, setShowPopupTips] = useState(false);
 
-  // 1. Google Auth Connection Handler (Custom Backend/Sandbox Redirect Protocol)
+  // 1. Google Auth Connection Handler (Direct Client-Side Google SSO)
   const handleGoogleSignInByPopup = async () => {
     setAuthError('');
     setConnecting(true);
     setShowPopupTips(false);
 
     try {
-      const origin = window.location.origin;
-      const response = await fetch(`/api/auth/google/url?origin=${encodeURIComponent(origin)}`);
-      
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => "No extra error body");
-        throw new Error(`Could not retrieve authorization credentials from the backend server. Status: ${response.status} (${response.statusText}). Error: ${errorText}`);
-      }
-      
-      const data = await response.json();
-      const authUrl = data.url;
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      const result = await signInWithPopup(auth, provider);
+      const firebaseUser = result.user;
 
-      // Calculate perfect centering for popup window coords
-      const width = 500;
-      const height = 650;
-      const left = window.screen.width / 2 - width / 2;
-      const top = window.screen.height / 2 - height / 2;
-      
-      const popup = window.open(
-        authUrl,
-        'google-oauth-popup',
-        `width=${width},height=${height},top=${top},left=${left},scrollbars=yes,resizable=yes`
-      );
-
-      if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-        // Popups are blocked by browser iframe constraints
-        setShowPopupTips(true);
-        setConnecting(false);
-        setAuthError("Popup blocked by browser. Please look at your URL bar's right corner to 'Always allow', OR click 'Open in a new tab' at the top-right of your screen.");
-        return;
-      }
-
-      // Secure event listener to listen to postMessage events from the opened popup
-      const handleAuthMessage = async (event: MessageEvent) => {
-        if (event.origin !== window.location.origin) return;
-
-        if (event.data && event.data.type === 'OAUTH_AUTH_SUCCESS') {
-          window.removeEventListener('message', handleAuthMessage);
-          
-          const profile = event.data.user;
-          const safeUid = 'sso_' + profile.email.replace(/[^a-zA-Z0-9]/g, '');
-
-          // Check if profile exists in Firestore, otherwise write a new record
-          try {
-            const userDocRef = doc(db, 'users', safeUid);
-            const userDocSnap = await getDoc(userDocRef);
-            
-            let completedProfile;
-            if (userDocSnap && userDocSnap.exists()) {
-              completedProfile = userDocSnap.data();
-            } else {
-              completedProfile = {
-                uid: safeUid,
-                name: profile.name.trim(),
-                email: profile.email.trim().toLowerCase(),
-                phone: profile.phone || "Google Verified",
-                avatarUrl: profile.avatarUrl || "",
-                createdAt: new Date().toISOString(),
-                updatedAt: new Date().toISOString()
-              };
-              await setDoc(userDocRef, completedProfile);
-            }
-
-            localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
-            
-            // Sync with backend session
-            await fetch('/api/auth/signup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                uid: completedProfile.uid,
-                name: completedProfile.name,
-                email: completedProfile.email,
-                phone: completedProfile.phone,
-                password: "SSO_USER_PASSWORD"
-              })
-            }).catch(err => console.warn("Backend auth sync warning:", err));
-
-            onLoginSuccess(completedProfile);
-          } catch (firestoreErr: any) {
-            console.warn("Firestore error during Google auth login mapping. Falling back to local SSO:", firestoreErr);
-            
-            // Fallback: Local auth storage persistence in case Firestore is not fully configured
-            const fallbackProfile = {
-              uid: safeUid,
-              name: profile.name.trim(),
-              email: profile.email.trim().toLowerCase(),
-              phone: "Google Verified Survivor",
-              avatarUrl: profile.avatarUrl || "",
-              createdAt: new Date().toISOString(),
-              updatedAt: new Date().toISOString()
-            };
-            localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
-
-            // Sync with backend session
-            await fetch('/api/auth/signup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                uid: fallbackProfile.uid,
-                name: fallbackProfile.name,
-                email: fallbackProfile.email,
-                phone: fallbackProfile.phone,
-                password: "SSO_USER_PASSWORD"
-              })
-            }).catch(err => console.warn("Backend auth sync warning:", err));
-
-            onLoginSuccess(fallbackProfile);
-          }
+      // Check if profile exists in Firestore, otherwise write a new record
+      try {
+        const userDocRef = doc(db, 'users', firebaseUser.uid);
+        const userDocSnap = await getDoc(userDocRef);
+        
+        let completedProfile;
+        if (userDocSnap && userDocSnap.exists()) {
+          completedProfile = userDocSnap.data();
+        } else {
+          completedProfile = {
+            uid: firebaseUser.uid,
+            name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
+            email: (firebaseUser.email || "").trim().toLowerCase(),
+            phone: firebaseUser.phoneNumber || "Google Verified",
+            avatarUrl: firebaseUser.photoURL || "",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          await setDoc(userDocRef, completedProfile);
         }
-      };
 
-      window.addEventListener('message', handleAuthMessage);
-
-      // Periodically check if popup is closed to reset loading state
-      const checker = setInterval(() => {
-        if (popup.closed) {
-          clearInterval(checker);
-          setConnecting(false);
-        }
-      }, 800);
-
+        localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
+        onLoginSuccess(completedProfile);
+      } catch (firestoreErr: any) {
+        console.warn("Firestore error during Google auth login mapping. Falling back to local SSO:", firestoreErr);
+        
+        const fallbackProfile = {
+          uid: firebaseUser.uid,
+          name: (firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core").trim(),
+          email: (firebaseUser.email || "").trim().toLowerCase(),
+          phone: "Google Verified",
+          avatarUrl: firebaseUser.photoURL || "",
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString()
+        };
+        localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
+        onLoginSuccess(fallbackProfile);
+      }
     } catch (err: any) {
       setConnecting(false);
-      console.error("Custom Google Authentication Error:", err);
-      setAuthError(err.message || "Failed to launch custom Google Handshake interface.");
+      console.error("Google Authentication Error:", err);
+      if (err.code === 'auth/popup-blocked') {
+        setShowPopupTips(true);
+        setAuthError("Popup blocked by browser. Please look at your URL bar's right corner or click 'Open in a new tab' at top-right of your screen.");
+      } else if (err.code === 'auth/cancelled-popup-request') {
+        setAuthError("The sign-in popup was closed before completion.");
+      } else {
+        setAuthError(err.message || "Failed to authenticate with Google.");
+      }
     }
   };
 
-  // 2. Email & Password Register Handler (Standard non-popup based)
+  // 2. Email & Password Register Handler (Direct Client-Side Registration)
   const handleEmailSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -210,19 +139,6 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
         handleFirestoreError(err, OperationType.WRITE, `users/${completedProfile.uid}`);
       }
 
-      // Sync session with full-stack backend
-      await fetch('/api/auth/signup', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          uid: completedProfile.uid,
-          name: completedProfile.name,
-          email: completedProfile.email,
-          phone: completedProfile.phone,
-          password: password
-        })
-      }).catch(err => console.warn("Backend auth sync warning:", err));
-
       localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
       onLoginSuccess(completedProfile);
     } catch (err: any) {
@@ -242,7 +158,7 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
     }
   };
 
-  // 3. Email & Password Sign-In Handler
+  // 3. Email & Password Sign-In Handler (Direct Client-Side Sign-In)
   const handleEmailSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError('');
@@ -269,30 +185,6 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
 
       if (userDocSnap && userDocSnap.exists()) {
         const existingProfile = userDocSnap.data();
-        
-        // Match/Sync session on backend
-        await fetch('/api/auth/login', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            email: existingProfile.email,
-            password: password
-          })
-        }).catch(async (err) => {
-          // Fallback if password didn't sync or first time login on server
-          await fetch('/api/auth/signup', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              uid: existingProfile.uid,
-              name: existingProfile.name,
-              email: existingProfile.email,
-              phone: existingProfile.phone || "Guest Handset",
-              password: password
-            })
-          }).catch(e => console.warn("Backend login/signup sync failed:", e));
-        });
-
         localStorage.setItem('cockroach_current_user', JSON.stringify(existingProfile));
         onLoginSuccess(existingProfile);
       } else {
@@ -310,19 +202,6 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
         } catch (err) {
           handleFirestoreError(err, OperationType.WRITE, `users/${completedProfile.uid}`);
         }
-
-        // Sync with backend session
-        await fetch('/api/auth/signup', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            uid: completedProfile.uid,
-            name: completedProfile.name,
-            email: completedProfile.email,
-            phone: completedProfile.phone,
-            password: password
-          })
-        }).catch(err => console.warn("Backend auth sync warning:", err));
 
         localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
         onLoginSuccess(completedProfile);

@@ -10,8 +10,8 @@ import DashboardPage from './components/screens/DashboardPage';
 import AuthPage from './components/screens/AuthPage';
 import StaticPages from './components/screens/StaticPages';
 import AdminDashboardPage from './components/screens/AdminDashboardPage';
-import { signOut } from 'firebase/auth';
-import { collection, doc, setDoc, getDocs } from 'firebase/firestore';
+import { signOut, onAuthStateChanged } from 'firebase/auth';
+import { collection, doc, setDoc, getDocs, getDoc } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from './firebase';
 
 import { 
@@ -73,30 +73,51 @@ export default function App() {
   // Past purchases logs to populate dashboard beautifully right off the gate
   const [orders, setOrders] = useState<Order[]>([]);
 
-  // Synchronize startup session with backend matching
+  // Listen to Firebase Auth state change for real persistent session tracking
   useEffect(() => {
-    const syncStartupSession = async () => {
-      const stored = localStorage.getItem('cockroach_current_user');
-      if (stored) {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
         try {
-          const profile = JSON.parse(stored);
-          if (profile && profile.email) {
-            await fetch('/api/auth/signup', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                uid: profile.uid,
-                name: profile.name,
-                email: profile.email,
-                phone: profile.phone || "Google Verified",
-                password: "SSO_USER_PASSWORD"
-              })
-            }).catch(e => console.warn("Startup session backend matching ignored:", e));
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userSnap = await getDoc(userDocRef);
+          if (userSnap.exists()) {
+            const profile = userSnap.data();
+            setCurrentUser(profile);
+            localStorage.setItem('cockroach_current_user', JSON.stringify(profile));
+          } else {
+            // Fallback profile if user document does not exist yet (e.g. newly authenticated Google SSO)
+            const fallbackProfile = {
+              uid: firebaseUser.uid,
+              name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core",
+              email: firebaseUser.email || "",
+              phone: firebaseUser.phoneNumber || "Google Verified",
+              avatarUrl: firebaseUser.photoURL || "",
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            setCurrentUser(fallbackProfile);
+            localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
           }
-        } catch (err) {}
+        } catch (err) {
+          console.error("Error retrieving user document on auth state change:", err);
+          const fallbackProfile = {
+            uid: firebaseUser.uid,
+            name: firebaseUser.displayName || firebaseUser.email?.split('@')[0] || "Shopper Core",
+            email: firebaseUser.email || "",
+            phone: firebaseUser.phoneNumber || "Google Verified",
+            avatarUrl: firebaseUser.photoURL || "",
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          };
+          setCurrentUser(fallbackProfile);
+          localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
+        }
+      } else {
+        setCurrentUser(null);
+        localStorage.removeItem('cockroach_current_user');
       }
-    };
-    syncStartupSession();
+    });
+    return () => unsubscribe();
   }, []);
 
   // Load user-dependent data dynamically on login or transition
@@ -391,9 +412,6 @@ export default function App() {
 
   const handleLogout = () => {
     signOut(auth).catch((err) => console.error("Firebase logout error:", err));
-    
-    // Sync logout with full-stack backend
-    fetch('/api/auth/logout', { method: 'POST' }).catch((err) => console.warn("Backend logout sync failed:", err));
 
     setCurrentUser(null);
     localStorage.removeItem('cockroach_current_user');
