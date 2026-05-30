@@ -1,0 +1,26 @@
+{
+  "niteshkumar9128ku@gmail.com": {
+    "uid": "sso_niteshkumar9128ku",
+    "name": "Nitesh Kumar",
+    "email": "niteshkumar9128ku@gmail.com",
+    "phone": "Google Verified",
+    "password": "Password123",
+    "createdAt": "2026-05-30T06:44:43.034Z"
+  },
+  "rahulsharma@gmail.com": {
+    "uid": "sso_rahulsharma",
+    "name": "Rahul Sharma",
+    "email": "rahulsharma@gmail.com",
+    "phone": "Google Verified",
+    "password": "Password123",
+    "createdAt": "2026-05-30T06:44:43.034Z"
+  },
+  "auditor@cockroachkart.com": {
+    "uid": "uid_848f3dfb4462d082",
+    "name": "Survival Auditor",
+    "email": "auditor@cockroachkart.com",
+    "phone": "9999999999",
+    "password": "Password999",
+    "createdAt": "2026-05-30T06:45:06.736Z"
+  }
+}

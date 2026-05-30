@@ -73,6 +73,32 @@ export default function App() {
   // Past purchases logs to populate dashboard beautifully right off the gate
   const [orders, setOrders] = useState<Order[]>([]);
 
+  // Synchronize startup session with backend matching
+  useEffect(() => {
+    const syncStartupSession = async () => {
+      const stored = localStorage.getItem('cockroach_current_user');
+      if (stored) {
+        try {
+          const profile = JSON.parse(stored);
+          if (profile && profile.email) {
+            await fetch('/api/auth/signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                uid: profile.uid,
+                name: profile.name,
+                email: profile.email,
+                phone: profile.phone || "Google Verified",
+                password: "SSO_USER_PASSWORD"
+              })
+            }).catch(e => console.warn("Startup session backend matching ignored:", e));
+          }
+        } catch (err) {}
+      }
+    };
+    syncStartupSession();
+  }, []);
+
   // Load user-dependent data dynamically on login or transition
   const syncUserData = () => {
     if (currentUser && currentUser.email) {
@@ -365,6 +391,10 @@ export default function App() {
 
   const handleLogout = () => {
     signOut(auth).catch((err) => console.error("Firebase logout error:", err));
+    
+    // Sync logout with full-stack backend
+    fetch('/api/auth/logout', { method: 'POST' }).catch((err) => console.warn("Backend logout sync failed:", err));
+
     setCurrentUser(null);
     localStorage.removeItem('cockroach_current_user');
     setWishlist([]);

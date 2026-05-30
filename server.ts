@@ -3,6 +3,8 @@ import path from "path";
 import nodemailer from "nodemailer";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import fs from "fs";
+import crypto from "crypto";
 
 // Load environment variables so we can access dynamic user secrets
 dotenv.config();
@@ -12,6 +14,246 @@ const PORT = 3000;
 
 // Setup JSON body parsing structures
 app.use(express.json());
+
+// Path to low-db style store
+const DB_PATH = path.join(process.cwd(), "users_db.json");
+
+interface UserRecord {
+  uid: string;
+  name: string;
+  email: string;
+  phone: string;
+  password?: string;
+  createdAt: string;
+}
+
+// In-memory cache + file sync
+let usersCache: Record<string, UserRecord> = {};
+let sessionsCache: Record<string, string> = {}; // token -> email
+
+// Seed default users
+const defaultUsers: UserRecord[] = [
+  {
+    uid: "sso_niteshkumar9128ku",
+    name: "Nitesh Kumar",
+    email: "niteshkumar9128ku@gmail.com",
+    phone: "Google Verified",
+    password: "Password123",
+    createdAt: new Date().toISOString()
+  },
+  {
+    uid: "sso_rahulsharma",
+    name: "Rahul Sharma",
+    email: "rahulsharma@gmail.com",
+    phone: "Google Verified",
+    password: "Password123",
+    createdAt: new Date().toISOString()
+  }
+];
+
+function loadDb() {
+  try {
+    if (fs.existsSync(DB_PATH)) {
+      const data = fs.readFileSync(DB_PATH, "utf-8");
+      usersCache = JSON.parse(data);
+    } else {
+      defaultUsers.forEach(u => {
+        usersCache[u.email.toLowerCase()] = u;
+      });
+      saveDb();
+    }
+  } catch (err) {
+    console.warn("DBCache error, using in-memory:", err);
+  }
+}
+
+function saveDb() {
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(usersCache, null, 2), "utf-8");
+  } catch (err) {
+    console.error("DBCache save failed:", err);
+  }
+}
+
+// Initialize db
+loadDb();
+
+function getSessionUser(req: any) {
+  let token = "";
+  // Check authorization header
+  const authHeader = req.headers.authorization;
+  if (authHeader && authHeader.startsWith("Bearer ")) {
+    token = authHeader.substring(7);
+  }
+  // Check cookies
+  if (!token && req.headers.cookie) {
+    const match = req.headers.cookie.match(/session_token=([^;]+)/);
+    if (match) {
+      token = match[1];
+    }
+  }
+  
+  if (token && sessionsCache[token]) {
+    const email = sessionsCache[token];
+    return usersCache[email];
+  }
+  return null;
+}
+
+// REST Backend Auths endpoints supporting signup, login, session check, logout & refresh
+app.post("/api/auth/signup", (req, res) => {
+  try {
+    const { name, email, password, phone, uid } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ status: "error", message: "Email and password are required" });
+    }
+    const safeEmail = email.trim().toLowerCase();
+    
+    // Check if user already exists
+    if (usersCache[safeEmail]) {
+      return res.status(400).json({ status: "error", message: "Email already registered" });
+    }
+    
+    const userUid = uid || "uid_" + crypto.randomBytes(8).toString("hex");
+    const newUser: UserRecord = {
+      uid: userUid,
+      name: (name || email.split("@")[0] || "User").trim(),
+      email: safeEmail,
+      phone: phone || "Guest Handset",
+      password: password,
+      createdAt: new Date().toISOString()
+    };
+    
+    usersCache[safeEmail] = newUser;
+    saveDb();
+    
+    const token = crypto.randomBytes(24).toString("hex");
+    sessionsCache[token] = safeEmail;
+    
+    res.setHeader("Set-Cookie", `session_token=${token}; Path=/; Secure; SameSite=None; HttpOnly; Max-Age=86400`);
+    return res.status(200).json({
+      status: "success",
+      message: "Registered successfully",
+      user: {
+        uid: newUser.uid,
+        name: newUser.name,
+        email: newUser.email,
+        phone: newUser.phone
+      },
+      token
+    });
+  } catch (error: any) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+app.post("/api/auth/login", (req, res) => {
+  try {
+    const { email, password } = req.body;
+    if (!email || !password) {
+      return res.status(400).json({ status: "error", message: "Email and password are required" });
+    }
+    const safeEmail = email.trim().toLowerCase();
+    const user = usersCache[safeEmail];
+    
+    if (!user || user.password !== password) {
+      return res.status(401).json({ status: "error", message: "Invalid email or password" });
+    }
+    
+    const token = crypto.randomBytes(24).toString("hex");
+    sessionsCache[token] = safeEmail;
+    
+    res.setHeader("Set-Cookie", `session_token=${token}; Path=/; Secure; SameSite=None; HttpOnly; Max-Age=86400`);
+    return res.status(200).json({
+      status: "success",
+      message: "Credentials matching successful",
+      user: {
+        uid: user.uid,
+        name: user.name,
+        email: user.email,
+        phone: user.phone
+      },
+      token
+    });
+  } catch (error: any) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+app.get(["/api/auth/session", "/api/auth/user"], (req, res) => {
+  try {
+    const user = getSessionUser(req);
+    if (user) {
+      return res.status(200).json({
+        status: "success",
+        user: {
+          uid: user.uid,
+          name: user.name,
+          email: user.email,
+          phone: user.phone
+        }
+      });
+    }
+    return res.status(401).json({ status: "error", message: "Unauthenticated session" });
+  } catch (error: any) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+app.post("/api/auth/logout", (req, res) => {
+  try {
+    let token = "";
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    }
+    if (!token && req.headers.cookie) {
+      const match = req.headers.cookie.match(/session_token=([^;]+)/);
+      if (match) {
+        token = match[1];
+      }
+    }
+    
+    if (token) {
+      delete sessionsCache[token];
+    }
+    
+    res.setHeader("Set-Cookie", "session_token=; Path=/; Secure; SameSite=None; HttpOnly; Max-Age=0");
+    return res.status(200).json({ status: "success", message: "Logged out successfully" });
+  } catch (error: any) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
+
+app.post("/api/auth/refresh", (req, res) => {
+  try {
+    let token = "";
+    const authHeader = req.headers.authorization;
+    if (authHeader && authHeader.startsWith("Bearer ")) {
+      token = authHeader.substring(7);
+    }
+    if (!token && req.headers.cookie) {
+      const match = req.headers.cookie.match(/session_token=([^;]+)/);
+      if (match) {
+        token = match[1];
+      }
+    }
+    
+    if (token && sessionsCache[token]) {
+      const email = sessionsCache[token];
+      const newToken = crypto.randomBytes(24).toString("hex");
+      delete sessionsCache[token];
+      sessionsCache[newToken] = email;
+      
+      res.setHeader("Set-Cookie", `session_token=${newToken}; Path=/; Secure; SameSite=None; HttpOnly; Max-Age=86400`);
+      return res.status(200).json({ status: "success", token: newToken });
+    }
+    
+    return res.status(401).json({ status: "error", message: "Invalid refresh coordinates" });
+  } catch (error: any) {
+    return res.status(500).json({ status: "error", message: error.message });
+  }
+});
 
 // Google OAuth 2.0 Auth URL Generation Endpoint
 app.get("/api/auth/google/url", (req, res) => {

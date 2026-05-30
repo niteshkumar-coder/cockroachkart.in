@@ -101,6 +101,20 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
             }
 
             localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
+            
+            // Sync with backend session
+            await fetch('/api/auth/signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                uid: completedProfile.uid,
+                name: completedProfile.name,
+                email: completedProfile.email,
+                phone: completedProfile.phone,
+                password: "SSO_USER_PASSWORD"
+              })
+            }).catch(err => console.warn("Backend auth sync warning:", err));
+
             onLoginSuccess(completedProfile);
           } catch (firestoreErr: any) {
             console.warn("Firestore error during Google auth login mapping. Falling back to local SSO:", firestoreErr);
@@ -116,6 +130,20 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
               updatedAt: new Date().toISOString()
             };
             localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
+
+            // Sync with backend session
+            await fetch('/api/auth/signup', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                uid: fallbackProfile.uid,
+                name: fallbackProfile.name,
+                email: fallbackProfile.email,
+                phone: fallbackProfile.phone,
+                password: "SSO_USER_PASSWORD"
+              })
+            }).catch(err => console.warn("Backend auth sync warning:", err));
+
             onLoginSuccess(fallbackProfile);
           }
         }
@@ -182,6 +210,19 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
         handleFirestoreError(err, OperationType.WRITE, `users/${completedProfile.uid}`);
       }
 
+      // Sync session with full-stack backend
+      await fetch('/api/auth/signup', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          uid: completedProfile.uid,
+          name: completedProfile.name,
+          email: completedProfile.email,
+          phone: completedProfile.phone,
+          password: password
+        })
+      }).catch(err => console.warn("Backend auth sync warning:", err));
+
       localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
       onLoginSuccess(completedProfile);
     } catch (err: any) {
@@ -228,6 +269,30 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
 
       if (userDocSnap && userDocSnap.exists()) {
         const existingProfile = userDocSnap.data();
+        
+        // Match/Sync session on backend
+        await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: existingProfile.email,
+            password: password
+          })
+        }).catch(async (err) => {
+          // Fallback if password didn't sync or first time login on server
+          await fetch('/api/auth/signup', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              uid: existingProfile.uid,
+              name: existingProfile.name,
+              email: existingProfile.email,
+              phone: existingProfile.phone || "Guest Handset",
+              password: password
+            })
+          }).catch(e => console.warn("Backend login/signup sync failed:", e));
+        });
+
         localStorage.setItem('cockroach_current_user', JSON.stringify(existingProfile));
         onLoginSuccess(existingProfile);
       } else {
@@ -245,6 +310,20 @@ export default function AuthPage({ setScreen, onLoginSuccess }: AuthPageProps) {
         } catch (err) {
           handleFirestoreError(err, OperationType.WRITE, `users/${completedProfile.uid}`);
         }
+
+        // Sync with backend session
+        await fetch('/api/auth/signup', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            uid: completedProfile.uid,
+            name: completedProfile.name,
+            email: completedProfile.email,
+            phone: completedProfile.phone,
+            password: password
+          })
+        }).catch(err => console.warn("Backend auth sync warning:", err));
+
         localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
         onLoginSuccess(completedProfile);
       }
