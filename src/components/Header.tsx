@@ -13,6 +13,7 @@ interface HeaderProps {
   setStaticTab: (tab: any) => void;
   products: Product[];
   setSelectedProduct: (prod: Product) => void;
+  authLoading?: boolean;
 }
 
 export default function Header({
@@ -24,7 +25,8 @@ export default function Header({
   currentUser,
   setStaticTab,
   products,
-  setSelectedProduct
+  setSelectedProduct,
+  authLoading = false
 }: HeaderProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);
@@ -255,6 +257,10 @@ export default function Header({
                   {currentUser.name ? currentUser.name.split(' ')[0] : 'Survivor'}
                 </span>
               </button>
+            ) : authLoading ? (
+              <div className="flex items-center justify-center p-2 px-3 bg-neutral-900/40 rounded-full border border-neutral-800 h-8 min-w-[70px]">
+                <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-amber-500 border-t-transparent" />
+              </div>
             ) : (
               <button
                 onClick={() => setScreen('auth')}
@@ -351,10 +357,31 @@ export default function Header({
                   setScreen('static');
                   setMobileMenuOpen(false);
                 }}
-                className="text-left py-2 hover:text-amber-400"
+                className="text-left py-2 hover:text-amber-400 border-b border-neutral-900"
               >
                 FAQs
               </button>
+
+              {currentUser ? (
+                <button
+                  onClick={() => { setScreen('dashboard'); setMobileMenuOpen(false); }}
+                  className="text-left py-2.5 text-amber-400 hover:text-amber-300 font-extrabold flex items-center gap-2 font-mono uppercase tracking-wider text-xs"
+                >
+                  {currentUser.avatarUrl ? (
+                    <img src={currentUser.avatarUrl} alt="Avatar" className="h-5 w-5 rounded-full border border-amber-400/30" referrerPolicy="no-referrer" />
+                  ) : (
+                    <div className="h-5 w-5 rounded-full bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-[10px]">🪳</div>
+                  )}
+                  My Account: {currentUser.name ? currentUser.name.split(' ')[0] : 'Survivor'}
+                </button>
+              ) : (
+                <button
+                  onClick={() => { setScreen('auth'); setMobileMenuOpen(false); }}
+                  className="text-left py-2.5 text-amber-500 hover:text-amber-400 font-extrabold font-mono uppercase tracking-wider text-xs"
+                >
+                  ⚡ Register & Sign In
+                </button>
+              )}
             </div>
           </motion.div>
         )}

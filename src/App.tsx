@@ -54,6 +54,7 @@ export default function App() {
 
   // Profile completion overlays
   const [showProfileCompletePopup, setShowProfileCompletePopup] = useState(false);
+  const [authLoading, setAuthLoading] = useState(true);
 
   useEffect(() => {
     if (currentUser && (!currentUser.name || !currentUser.phone || currentUser.profileCompleted === false)) {
@@ -128,6 +129,8 @@ export default function App() {
   // Listen to Firebase Auth state change for real persistent session tracking
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      console.log("onAuthStateChanged listener triggered. Firebase User:", firebaseUser ? firebaseUser.uid : "null");
+      setAuthLoading(true);
       if (firebaseUser) {
         try {
           const userDocRef = doc(db, 'users', firebaseUser.uid);
@@ -167,9 +170,34 @@ export default function App() {
           localStorage.setItem('cockroach_current_user', JSON.stringify(fallbackProfile));
         }
       } else {
-        setCurrentUser(null);
-        localStorage.removeItem('cockroach_current_user');
+        // Safe-guard mock/guest login and sandboxed iframe environments from null resets
+        const currentStored = localStorage.getItem('cockroach_current_user');
+        let preserveLocal = false;
+        if (currentStored) {
+          try {
+            const parsed = JSON.parse(currentStored);
+            if (parsed && parsed.uid) {
+              const isSandboxEnvironment = window.self !== window.top || 
+                window.location.hostname.includes('asia-southeast1.run.app') || 
+                window.location.hostname.includes('webcontainer') || 
+                window.location.hostname.includes('localhost');
+                
+              if (parsed.uid.startsWith('google_sb_') || parsed.uid.startsWith('guest_') || isSandboxEnvironment) {
+                console.log("Preserving sandbox or local mock user session from Firebase Auth null override:", parsed.uid);
+                preserveLocal = true;
+              }
+            }
+          } catch (e) {
+            // silent ignore
+          }
+        }
+
+        if (!preserveLocal) {
+          setCurrentUser(null);
+          localStorage.removeItem('cockroach_current_user');
+        }
       }
+      setAuthLoading(false);
     });
     return () => unsubscribe();
   }, []);
@@ -555,6 +583,7 @@ export default function App() {
         setStaticTab={setCurrentStaticTab}
         products={products}
         setSelectedProduct={handleSetSelectedProductInDetail}
+        authLoading={authLoading}
       />
 
       {/* Main viewport frame */}
