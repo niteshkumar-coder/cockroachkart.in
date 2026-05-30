@@ -2,6 +2,7 @@ import React, { useState, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Search, ShoppingCart, Heart, User, Menu, X, Sparkles, Filter, Percent } from 'lucide-react';
 import { ScreenType, CartItem, Product } from '../types';
+import { auth } from '../firebase';
 
 interface HeaderProps {
   currentScreen: ScreenType;
@@ -28,7 +29,7 @@ export default function Header({
   setSelectedProduct,
   authLoading = false
 }: HeaderProps) {
-  console.log("Navbar User:", currentUser);
+  console.log("[Navbar Render] Props Received - currentUser:", currentUser, "authLoading:", authLoading, "Firebase currentUser:", auth?.currentUser);
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchFocused, setSearchFocused] = useState(false);

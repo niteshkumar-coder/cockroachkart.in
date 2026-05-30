@@ -2,6 +2,7 @@ import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ShoppingBag, MapPin, Heart, ShieldAlert, LogOut, Edit, Check, Settings, Trash, Eye } from 'lucide-react';
 import { Product, ScreenType, Order, SavedAddress } from '../../types';
+import { auth } from '../../firebase';
 
 interface DashboardPageProps {
   setScreen: (screen: ScreenType) => void;
@@ -33,6 +34,8 @@ export default function DashboardPage({
   onLogout
 }: DashboardPageProps) {
   const [activeSubTab, setActiveSubTab] = useState<'orders' | 'profile' | 'addresses' | 'wishlist'>('orders');
+  
+  console.log("[Dashboard Render] Props Received - currentUser:", currentUser, "Firebase auth.currentUser:", auth?.currentUser);
   
   // Profile Form States
   const [name, setName] = useState(currentUser?.name || currentUser?.displayName || '');

@@ -348,7 +348,32 @@ export default function App() {
   // Hook up real-time cross-tab same-tab storage synchronization listeners
   useEffect(() => {
     const handleGlobalDataSync = () => {
-      syncUserData();
+      const stored = localStorage.getItem('cockroach_current_user');
+      console.log("[handleGlobalDataSync / Storage Event Sync]: Triggered. Stored value:", stored ? "exists" : "null");
+      
+      let parsedUser = null;
+      if (stored) {
+        try {
+          const parsed = JSON.parse(stored);
+          if (parsed && parsed.uid) {
+            parsedUser = parsed;
+          }
+        } catch (e) {
+          console.error("[handleGlobalDataSync / Storage Event Sync]: Failed to parse stored user", e);
+        }
+      }
+
+      // Sync the user state if it differs
+      const prevUid = currentUser ? currentUser.uid : null;
+      const nextUid = parsedUser ? parsedUser.uid : null;
+      
+      if (prevUid !== nextUid) {
+        console.log("[handleGlobalDataSync / Storage Event Sync]: Updating state from", prevUid, "to", nextUid);
+        setCurrentUser(parsedUser);
+      } else {
+        // Run standard user-dependent data sync
+        syncUserData();
+      }
     };
 
     window.addEventListener('storage', handleGlobalDataSync);
@@ -583,6 +608,8 @@ export default function App() {
       setCurrentScreen('auth');
     }
   }, [currentUser, currentScreen]);
+
+  console.log("[App.tsx Render] Current State - currentUser:", currentUser, "authLoading:", authLoading, "Firebase auth.currentUser:", auth?.currentUser);
 
   return (
     <div className="flex min-h-screen w-full overflow-x-hidden flex-col bg-[#0D0D0D] font-sans antialiased text-white selection:bg-amber-500 selection:text-black">
