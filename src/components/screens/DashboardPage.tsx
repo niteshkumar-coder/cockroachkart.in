@@ -1,4 +1,4 @@
-import React, { useState, FormEvent } from 'react';
+import React, { useState, useEffect, FormEvent } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { User, ShoppingBag, MapPin, Heart, ShieldAlert, LogOut, Edit, Check, Settings, Trash, Eye } from 'lucide-react';
 import { Product, ScreenType, Order, SavedAddress } from '../../types';
@@ -35,11 +35,20 @@ export default function DashboardPage({
   const [activeSubTab, setActiveSubTab] = useState<'orders' | 'profile' | 'addresses' | 'wishlist'>('orders');
   
   // Profile Form States
-  const [name, setName] = useState(currentUser?.name || 'xxxxxxxx');
-  const [email, setEmail] = useState(currentUser?.email || 'xxxxxxxx@gmail.com');
-  const [phone, setPhone] = useState(currentUser?.phone || '91283XXXXX');
+  const [name, setName] = useState(currentUser?.name || '');
+  const [email, setEmail] = useState(currentUser?.email || '');
+  const [phone, setPhone] = useState(currentUser?.phone || '');
   const [profileSaving, setProfileSaving] = useState(false);
   const [profileSavedMsg, setProfileSavedMsg] = useState(false);
+
+  // Synchronize state with prop shifts (essential for Google async auth load)
+  useEffect(() => {
+    if (currentUser) {
+      if (currentUser.name) setName(currentUser.name);
+      if (currentUser.email) setEmail(currentUser.email);
+      if (currentUser.phone) setPhone(currentUser.phone);
+    }
+  }, [currentUser]);
 
   // Expanded order details tracker State
   const [expandedOrderNo, setExpandedOrderNo] = useState<string | null>(null);
