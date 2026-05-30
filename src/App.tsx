@@ -11,7 +11,7 @@ import DashboardPage from './components/screens/DashboardPage';
 import AuthPage from './components/screens/AuthPage';
 import StaticPages from './components/screens/StaticPages';
 import AdminDashboardPage from './components/screens/AdminDashboardPage';
-import { signOut, onAuthStateChanged } from 'firebase/auth';
+import { signOut, onAuthStateChanged, getRedirectResult } from 'firebase/auth';
 import { collection, doc, setDoc, getDocs, getDoc, onSnapshot } from 'firebase/firestore';
 import { auth, db, OperationType, handleFirestoreError } from './firebase';
 
@@ -56,7 +56,7 @@ export default function App() {
   const [showProfileCompletePopup, setShowProfileCompletePopup] = useState(false);
 
   useEffect(() => {
-    if (currentUser && currentUser.profileCompleted === false) {
+    if (currentUser && (!currentUser.name || !currentUser.phone || currentUser.profileCompleted === false)) {
       setShowProfileCompletePopup(true);
     } else {
       setShowProfileCompletePopup(false);
@@ -84,6 +84,46 @@ export default function App() {
 
   // Past purchases logs to populate dashboard beautifully right off the gate
   const [orders, setOrders] = useState<Order[]>([]);
+
+  // Synchronously resolve Google Redirect authentication result on app mount
+  useEffect(() => {
+    const processRedirect = async () => {
+      try {
+        const result = await getRedirectResult(auth);
+        if (result && result.user) {
+          const firebaseUser = result.user;
+          const userDocRef = doc(db, 'users', firebaseUser.uid);
+          const userDocSnap = await getDoc(userDocRef);
+          
+          let completedProfile;
+          if (userDocSnap && userDocSnap.exists()) {
+            completedProfile = userDocSnap.data();
+          } else {
+            completedProfile = {
+              uid: firebaseUser.uid,
+              name: (firebaseUser.displayName || "").trim(),
+              email: (firebaseUser.email || "").trim().toLowerCase(),
+              phone: firebaseUser.phoneNumber || "",
+              avatarUrl: firebaseUser.photoURL || "",
+              profileCompleted: false,
+              createdAt: new Date().toISOString(),
+              updatedAt: new Date().toISOString()
+            };
+            await setDoc(userDocRef, completedProfile);
+          }
+          
+          setCurrentUser(completedProfile);
+          localStorage.setItem('cockroach_current_user', JSON.stringify(completedProfile));
+          
+          // Switch to dashboard as user requested
+          setCurrentScreen('dashboard');
+        }
+      } catch (err: any) {
+        console.error("Error resolving Google Auth Redirect at App-level:", err);
+      }
+    };
+    processRedirect();
+  }, []);
 
   // Listen to Firebase Auth state change for real persistent session tracking
   useEffect(() => {
